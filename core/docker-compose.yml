@@ -1,0 +1,13 @@
+services:
+  dockposer:
+    build: .
+    container_name: dockposer
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"   # Caddy davor macht TLS
+    volumes:
+      - ./data:/app/data
+    environment:
+      - ORIGIN=${ORIGIN}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}

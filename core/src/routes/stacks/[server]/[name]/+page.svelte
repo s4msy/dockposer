@@ -9,6 +9,34 @@
 	let logSource = $state<{ container: string; abort: AbortController } | null>(null);
 	let editorContent = $state(data.compose?.content ?? '');
 	let outputEl = $state<HTMLElement | null>(null);
+	let containers = $state(data.containers);
+	let stats = $state<Record<string, { cpu: string; mem: string }>>({});
+
+	// Live-Polling: ps + stats alle 5s, solange die Seite offen ist
+	$effect(() => {
+		containers = data.containers;
+		if (data.agentOffline) return;
+		let stopped = false;
+		const tick = async () => {
+			try {
+				const res = await fetch(`/api/agent/${data.server.id}/${encodeURIComponent(data.name)}/status`);
+				if (!res.ok || stopped) return;
+				const body = await res.json();
+				containers = body.containers;
+				const map: Record<string, { cpu: string; mem: string }> = {};
+				for (const st of body.stats) map[st.Name] = { cpu: st.CPUPerc, mem: st.MemUsage };
+				stats = map;
+			} catch {
+				/* nächster Tick versucht es erneut */
+			}
+		};
+		tick();
+		const iv = setInterval(tick, 5000);
+		return () => {
+			stopped = true;
+			clearInterval(iv);
+		};
+	});
 
 	$effect(() => {
 		if (data.compose && !busy) editorContent = data.compose.content;
@@ -114,16 +142,19 @@
 	>down</button>
 </div>
 
-{#if data.containers.length > 0}
+{#if containers.length > 0}
 	<div class="card">
 		<strong>Services</strong>
 		<ul style="list-style: none; padding: 0; margin: var(--space-2) 0 0;">
-			{#each data.containers as c (c.Name)}
+			{#each containers as c (c.Name)}
 				<li style="padding: var(--space-2) 0; border-top: 1px solid var(--color-border); display: flex; align-items: center; gap: var(--space-2);">
 					<span class="dot {stateDot(c.State)}"></span>
 					<span style="flex: 1;">
 						{c.Service}
 						<small style="color: var(--color-text-dim); display: block;">{c.Status}{c.Health ? ` · ${c.Health}` : ''}</small>
+						{#if stats[c.Name]}
+							<small style="color: var(--color-text-dim); display: block;">CPU {stats[c.Name].cpu} · RAM {stats[c.Name].mem}</small>
+						{/if}
 					</span>
 					<button
 						style="width: auto; min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);"

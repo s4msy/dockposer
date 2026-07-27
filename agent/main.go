@@ -2,9 +2,10 @@
 // Kein Zustand außer der Config (ENV). Stirbt der Agent, läuft alles weiter.
 //
 // Konfiguration über Umgebungsvariablen:
-//   DOCKPOSER_TOKEN   (Pflicht)  Bearer-Token, vom Core bei Registrierung generiert
-//   DOCKPOSER_STACKS  (Pflicht)  Pfad zum Stacks-Ordner, z. B. /home/user/stacks
-//   DOCKPOSER_LISTEN  (Default 127.0.0.1:8720)  TLS macht der Proxy davor
+//
+//	DOCKPOSER_TOKEN   (Pflicht)  Bearer-Token, vom Core bei Registrierung generiert
+//	DOCKPOSER_STACKS  (Pflicht)  Pfad zum Stacks-Ordner, z. B. /home/user/stacks
+//	DOCKPOSER_LISTEN  (Default 127.0.0.1:8720)  TLS macht der Proxy davor
 package main
 
 import (
@@ -58,6 +59,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/health", handleHealth)
 	mux.HandleFunc("GET /v1/stacks", handleStacks)
+	mux.HandleFunc("POST /v1/stacks", handleStackCreate)
+	mux.HandleFunc("GET /v1/stats", handleStats)
 	mux.HandleFunc("GET /v1/stacks/{name}/compose", handleComposeGet)
 	mux.HandleFunc("GET /v1/stacks/{name}/ps", handleStackPs)
 	mux.HandleFunc("PUT /v1/stacks/{name}/compose", handleComposePut)
@@ -181,6 +184,72 @@ func fillState(ctx context.Context, dir string, info *stackInfo) {
 	default:
 		info.State = "running"
 	}
+}
+
+// handleStats: Einmal-Snapshot von docker stats für alle laufenden Container.
+// Der Core pollt das; ein Dauerstream lohnt erst, wenn es jemand vermisst.
+func handleStats(w http.ResponseWriter, r *http.Request) {
+	out, err := run(r.Context(), "", 20*time.Second, "docker", "stats", "--no-stream", "--format", "json")
+	if err != nil {
+		httpErr(w, 502, "docker stats fehlgeschlagen: "+strings.TrimSpace(out))
+		return
+	}
+	type statRow struct {
+		Name     string `json:"Name"`
+		CPUPerc  string `json:"CPUPerc"`
+		MemPerc  string `json:"MemPerc"`
+		MemUsage string `json:"MemUsage"`
+	}
+	rows := []statRow{}
+	for _, line := range nonEmptyLines(out) {
+		var row statRow
+		if json.Unmarshal([]byte(line), &row) == nil {
+			rows = append(rows, row)
+		}
+	}
+	writeJSON(w, rows)
+}
+
+// handleStackCreate: neuen Stack-Ordner + compose-Datei anlegen.
+// Validierung vor dem Anlegen — ungültiges YAML erzeugt keinen Ordner.
+func handleStackCreate(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name    string `json:"name"`
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+		httpErr(w, 400, "ungültiger Body")
+		return
+	}
+	if !nameRe.MatchString(req.Name) {
+		httpErr(w, 400, "ungültiger Stack-Name (erlaubt: a-z, 0-9, . _ -)")
+		return
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		httpErr(w, 400, "leere compose-Datei")
+		return
+	}
+	dir := filepath.Join(stacksDir, req.Name)
+	if _, err := os.Stat(dir); err == nil {
+		httpErr(w, 409, "Stack existiert bereits")
+		return
+	}
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		httpErr(w, 500, err.Error())
+		return
+	}
+	cf := filepath.Join(dir, "compose.yaml")
+	if err := os.WriteFile(cf, []byte(req.Content), 0o644); err != nil {
+		os.RemoveAll(dir)
+		httpErr(w, 500, err.Error())
+		return
+	}
+	if out, err := run(r.Context(), dir, 15*time.Second, "docker", "compose", "config", "--quiet"); err != nil {
+		os.RemoveAll(dir) // Validierung gescheitert → keinen Müll hinterlassen
+		httpErr(w, 422, "compose.yaml ungültig: "+strings.TrimSpace(out))
+		return
+	}
+	writeJSON(w, map[string]any{"name": req.Name, "hash": hashComposeFiles(dir)})
 }
 
 func handleComposeGet(w http.ResponseWriter, r *http.Request) {

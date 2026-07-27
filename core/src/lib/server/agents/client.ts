@@ -97,3 +97,20 @@ export async function agentStream(
 	if (!res.ok || !res.body) throw new AgentError(`Agent antwortet mit ${res.status}`, res.status);
 	return res;
 }
+
+export interface AgentStat {
+	Name: string;
+	CPUPerc: string;
+	MemPerc: string;
+	MemUsage: string;
+}
+
+export const fetchStats = (baseUrl: string, token: string) =>
+	agentFetch<AgentStat[]>(baseUrl, token, '/v1/stats', {}, 25_000);
+
+export const createStack = (baseUrl: string, token: string, name: string, content: string) =>
+	agentFetch<{ name: string; hash: string }>(baseUrl, token, '/v1/stacks', {
+		method: 'POST',
+		body: JSON.stringify({ name, content }),
+		headers: { 'Content-Type': 'application/json' }
+	}, 20_000);

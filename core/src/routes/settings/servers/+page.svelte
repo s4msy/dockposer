@@ -65,7 +65,7 @@
 		<input id="name" name="name" placeholder="hetzner-1" required />
 
 		<label for="baseUrl">Agent-URL (hinter deinem Proxy)</label>
-		<input id="baseUrl" name="baseUrl" type="url" placeholder="https://agent1.example.com" required />
+		<input id="baseUrl" name="baseUrl" type="url" placeholder="http://agent:8720 (lokal) oder https://agent1.example.com" required />
 
 		<label for="stacksPath">Stacks-Pfad auf dem Server</label>
 		<input id="stacksPath" name="stacksPath" placeholder="~/stacks" />

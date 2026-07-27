@@ -59,6 +59,7 @@ func main() {
 	mux.HandleFunc("GET /v1/health", handleHealth)
 	mux.HandleFunc("GET /v1/stacks", handleStacks)
 	mux.HandleFunc("GET /v1/stacks/{name}/compose", handleComposeGet)
+	mux.HandleFunc("GET /v1/stacks/{name}/ps", handleStackPs)
 	mux.HandleFunc("PUT /v1/stacks/{name}/compose", handleComposePut)
 	mux.HandleFunc("POST /v1/stacks/{name}/up", action("up", "-d"))
 	mux.HandleFunc("POST /v1/stacks/{name}/down", action("down"))
@@ -208,6 +209,40 @@ func handleComposeGet(w http.ResponseWriter, r *http.Request) {
 		"hash":      hashComposeFiles(dir),
 		"env_files": envFiles,
 	})
+}
+
+// handleStackPs: Container des Stacks — Basis für Service-Liste und Log-Auswahl.
+func handleStackPs(w http.ResponseWriter, r *http.Request) {
+	dir, ok := stackDir(w, r)
+	if !ok {
+		return
+	}
+	out, err := run(r.Context(), dir, 15*time.Second, "docker", "compose", "ps", "--all", "--format", "json")
+	if err != nil {
+		httpErr(w, 502, "compose ps fehlgeschlagen: "+strings.TrimSpace(out))
+		return
+	}
+	type psRow struct {
+		ID      string `json:"ID"`
+		Name    string `json:"Name"`
+		Service string `json:"Service"`
+		State   string `json:"State"`
+		Health  string `json:"Health"`
+		Status  string `json:"Status"`
+	}
+	rows := []psRow{}
+	trimmed := strings.TrimSpace(out)
+	if strings.HasPrefix(trimmed, "[") {
+		json.Unmarshal([]byte(trimmed), &rows)
+	} else {
+		for _, line := range nonEmptyLines(out) {
+			var row psRow
+			if json.Unmarshal([]byte(line), &row) == nil {
+				rows = append(rows, row)
+			}
+		}
+	}
+	writeJSON(w, rows)
 }
 
 func handleComposePut(w http.ResponseWriter, r *http.Request) {

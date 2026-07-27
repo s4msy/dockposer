@@ -49,3 +49,51 @@ export interface AgentStack {
 
 export const fetchStacks = (baseUrl: string, token: string) =>
 	agentFetch<AgentStack[]>(baseUrl, token, '/v1/stacks');
+
+export interface AgentCompose {
+	file: string;
+	content: string;
+	hash: string;
+	env_files: string[];
+}
+
+export const fetchCompose = (baseUrl: string, token: string, stack: string) =>
+	agentFetch<AgentCompose>(baseUrl, token, `/v1/stacks/${encodeURIComponent(stack)}/compose`);
+
+export async function putCompose(baseUrl: string, token: string, stack: string, content: string) {
+	return agentFetch<{ hash: string }>(baseUrl, token, `/v1/stacks/${encodeURIComponent(stack)}/compose`, {
+		method: 'PUT',
+		body: content,
+		headers: { 'Content-Type': 'application/yaml' }
+	});
+}
+
+export interface AgentContainer {
+	ID: string;
+	Name: string;
+	Service: string;
+	State: string;
+	Health: string;
+	Status: string;
+}
+
+export const fetchStackPs = (baseUrl: string, token: string, stack: string) =>
+	agentFetch<AgentContainer[]>(baseUrl, token, `/v1/stacks/${encodeURIComponent(stack)}/ps`, {}, 20_000);
+
+// Streaming-Requests (SSE): Response roh durchreichen, Timeout nur für den Verbindungsaufbau.
+export async function agentStream(
+	baseUrl: string,
+	token: string,
+	path: string,
+	method: 'GET' | 'POST' = 'POST'
+): Promise<Response> {
+	const url = baseUrl.replace(/\/$/, '') + path;
+	const res = await fetch(url, {
+		method,
+		headers: { Authorization: `Bearer ${token}` }
+	}).catch((e) => {
+		throw new AgentError(`Agent nicht erreichbar: ${e?.cause?.code ?? e.message}`);
+	});
+	if (!res.ok || !res.body) throw new AgentError(`Agent antwortet mit ${res.status}`, res.status);
+	return res;
+}

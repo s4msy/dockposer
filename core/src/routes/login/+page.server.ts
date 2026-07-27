@@ -28,7 +28,7 @@ export const actions: Actions = {
 			return fail(400, { error: 'Login fehlgeschlagen.', username });
 		}
 		if (user.totpEnabled && user.totpSecret) {
-			if (!totpCode) return fail(400, { needTotp: true, username, password: '' });
+			if (!totpCode) return fail(400, { needTotp: true, username });
 			if (!verifyTotp(user.totpSecret, totpCode)) {
 				return fail(400, { error: 'TOTP-Code ungültig.', needTotp: true, username });
 			}

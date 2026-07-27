@@ -20,13 +20,15 @@
 		<span class="dot {server.status === 'online' ? 'running' : 'stopped'}" aria-label={server.status}></span>
 		<ul style="list-style:none; padding:0; margin:var(--space-2) 0 0;">
 			{#each stacksFor(server.id) as stack (stack.id)}
-				<li style="padding:var(--space-2) 0; border-top:1px solid var(--color-border);">
+				<li style="padding:0; border-top:1px solid var(--color-border);">
+					<a href="/stacks/{server.id}/{encodeURIComponent(stack.name)}" style="display:flex; align-items:center; gap:var(--space-2); padding:var(--space-3) 0; text-decoration:none; color:inherit; min-height:44px;">
 					<span class="dot {stack.state}"></span>
 					{stack.name}
 					{#if stack.state === 'partial'}
 						<small>{stack.servicesRunning}/{stack.servicesTotal}</small>
 					{/if}
 					{#if stack.drift}<small style="color:var(--color-warn)">drift</small>{/if}
+					</a>
 				</li>
 			{/each}
 		</ul>

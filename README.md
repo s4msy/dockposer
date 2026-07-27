@@ -55,7 +55,9 @@ Dockposer macht **nicht**: Web-Terminal (stattdessen `ssh://`-Links zur nativen 
    └───────────┘  └───────────┘  └───────────┘     - docker compose ausführen
 ```
 
-Der Core rendert die UI, hält die DB und entscheidet über Alerts. Die Agents sind dumm: Sie führen Compose-Kommandos aus, streamen Events/Stats und melden Dateisystem-Zustand. **Alle Verbindungen gehen vom Core zum Agent** (Core → Agent HTTP + SSE zurück im selben Request), d. h. Agents brauchen einen erreichbaren Port, aber keinen Rückkanal-Setup. Auth per statischem Token (bei Registrierung generiert), Transport via HTTPS — im Homelab-Setup hinter Caddy oder direkt mit selbstsigniertem Cert + Pinning.
+Der Core rendert die UI, hält die DB und entscheidet über Alerts. Die Agents sind dumm: Sie führen Compose-Kommandos aus, streamen Events/Stats und melden Dateisystem-Zustand. **Alle Verbindungen gehen vom Core zum Agent** (Core → Agent HTTP + SSE zurück im selben Request), d. h. Agents brauchen einen erreichbaren Port, aber keinen Rückkanal-Setup. Auth per statischem Token (bei Registrierung generiert).
+
+**TLS (entschieden: modular, Proxy als Standard):** Der Agent selbst spricht schlicht HTTP auf localhost/LAN-Interface — TLS macht der Reverse Proxy davor (Caddy, ohnehin Pflicht-Setup: die PWA braucht HTTPS zwingend, sonst funktionieren Service Worker und Web Push gar nicht). Agent-eigenes TLS mit selbstsigniertem Cert + Pinning bleibt als optionales Modul für später offen; der Core validiert in beiden Fällen einfach HTTPS.
 
 ### Agent-Protokoll (v1)
 
@@ -177,6 +179,8 @@ Web Push direkt aus der PWA ist das Alleinstellungsmerkmal — kein Tool in dies
 
 **Erkennung:** Core macht pro Stack periodisch (Default 6h, konfigurierbar) HEAD-Requests gegen die Registry (`HEAD /v2/{image}/manifests/{tag}` mit `Accept: manifest`-Headern) und vergleicht den Digest mit dem laufenden. Billig, kein Pull. Ergebnis: Update-Feed in der UI („3 Stacks haben neue Images") mit Link zu Release Notes, wo ermittelbar (GitHub/Forgejo-Releases über Image-Labels `org.opencontainers.image.source`).
 
+Registry-Auth für private Images (z. B. Forgejo-Registry) kommt bewusst **ganz am Schluss** (siehe Milestones). Bis dahin degradiert der Feed leise: Images, deren Registry ohne Auth keinen Digest liefert, zeigen „Check nicht möglich" statt eines Fehlers — Updates dieser Stacks laufen weiterhin manuell per Pull.
+
 **Ausführung mit Auto-Rollback** (läuft im Agent, Entscheidung im Core):
 
 ```
@@ -213,7 +217,9 @@ Weitere Punkte: Agent-Tokens nur gehasht in der DB; CSRF über SvelteKit-Origin-
 
 ## PWA & Mobile-first
 
-Die Übersichtsseite ist für die Hosentasche gebaut: Server-Karten mit Ampel-Status, darunter Stacks als kompakte Liste (Name, Status-Dot, Drift-Badge, Update-Badge), Pull-to-Refresh, große Touch-Targets. Detailansichten (Logs, Compose-Editor) dürfen Desktop-lastiger sein — die Mobile-Priorität gilt für Monitoring und Ein-Klick-Aktionen (restart, update, ack).
+Die Übersichtsseite ist für die Hosentasche gebaut: Server-Karten mit Ampel-Status, darunter Stacks als kompakte Liste (Name, Status-Dot, Drift-Badge, Update-Badge), Pull-to-Refresh, große Touch-Targets.
+
+**Stack-State in der Übersicht (entschieden):** Ein Status-Dot pro Stack, keine Dots pro Service. Bei `partial` wird der Dot gelb und daneben steht kompakt „3/4" (laufende/definierte Services) — welcher Service down ist, zeigt erst die Detailansicht. Hält die Liste auch bei 20+ Stacks ruhig; Service-Dots wären ein kleiner, additiver Umbau, falls sich das in der Praxis als zu wenig Info erweist. Detailansichten (Logs, Compose-Editor) dürfen Desktop-lastiger sein — die Mobile-Priorität gilt für Monitoring und Ein-Klick-Aktionen (restart, update, ack).
 
 Technisch: Web App Manifest + Service Worker (Push-Empfang, App-Shell-Cache — **kein** Offline-Caching von Zustandsdaten, veralteter Status ist gefährlicher als kein Status), Badge-API für offene Alerts, `theme-color` je Light/Dark. Design nach Projektvorlage: Atkinson Hyperlegible, CSS-Variablen, `[data-theme="dark"]` + `prefers-color-scheme`, WCAG-AA-Kontrast, keine SaaS-Grautöne.
 
@@ -254,15 +260,17 @@ dockposer/
 
 ## MVP-Milestones
 
-**M1 — Lesen (das Fundament ehrlich testen):** Agent v0 (health, stacks, events, stats, logs — read-only), Core mit Login (Passwort + TOTP), Server-Registrierung, mobile Übersichtsseite mit Live-Status. *Erfolgskriterium: drei Fedora-Server in einer UI auf dem Handy, ohne dass irgendetwas am Bestand angefasst wurde.*
+Entwicklung läuft gegen ein dediziertes Testsystem mit Wegwerf-Stacks — deshalb kein separater Read-only-Milestone; der Agent kann von Anfang an schreiben (spart außerdem das Nachrüsten des SSE-Streamings der Compose-Ausgabe).
 
-**M2 — Schreiben:** up/down/pull/restart, Compose-Editor mit Datei-Roundtrip (atomares Schreiben), Drift-Anzeige. *Erst ab hier kann Dockposer überhaupt etwas kaputt machen — deshalb nach M1 ausgiebig gegen Wegwerf-Stacks testen.*
+**M1 — Grundgerüst (Lesen + Schreiben):** Agent v1 (health, stacks, events, stats, logs, up/down/pull/restart), Core mit Login (Passwort + TOTP), Server-Registrierung, mobile Übersichtsseite mit Live-Status („3/4"-Anzeige), Compose-Editor mit Datei-Roundtrip (atomares Schreiben), Drift-Anzeige. *Erfolgskriterium: drei Server in einer UI auf dem Handy, Stacks starten/stoppen/editieren funktioniert gegen das Testsystem.*
 
-**M3 — Alerts:** Pipeline, Crash-Loop-Erkennung, Web Push + ntfy, Alert-Center mit Ack. *Ab hier ist Dockposer besser als alles Getestete.*
+**M2 — Alerts:** Pipeline, Crash-Loop-Erkennung, Web Push + ntfy, Alert-Center mit Ack. *Ab hier ist Dockposer besser als alles Getestete.*
 
-**M4 — Updates:** Registry-Digest-Checks, Update-Feed, Update mit Auto-Rollback, Policies.
+**M3 — Updates:** Registry-Digest-Checks (öffentliche Registries), Update-Feed, Update mit Auto-Rollback, Policies.
 
-**M5 — Politur:** WebAuthn/Passkeys, Git-Backend, PWA-Feinschliff (Badge, Install-Prompt), `ssh://`-Buttons, Doku.
+**M4 — Politur:** WebAuthn/Passkeys, Git-Backend, PWA-Feinschliff (Badge, Install-Prompt), `ssh://`-Buttons, Doku.
+
+**M5 — Ganz am Schluss:** Registry-Auth für private Images (Forgejo-Registry) im Update-Feed. Bis dahin: „Check nicht möglich" für private Images, siehe Update-Management.
 
 ---
 
@@ -280,4 +288,4 @@ curl -s https://registry.npmjs.org/otpauth/latest | python3 -c "import sys,json;
 
 Bekannte Stolperfallen der Vorlage gelten weiter: `vitePreprocess` aus `@sveltejs/vite-plugin-svelte`, Plugin explizit als devDependency, `"type": "module"`, bcryptjs statisch importieren, `drizzle/` nicht in `.gitignore`. Neu für SQLite: `better-sqlite3` ist ein natives Modul — im Dockerfile braucht der Builder-Stage `apk add python3 make g++` (oder `npm rebuild better-sqlite3` im Runner testen), und das DB-File gehört auf ein Volume (`/app/data/dockposer.db`).
 
-**Offene Designfragen vor M1** (explizit, wie die Vorlage es verlangt): Agent-TLS im Homelab — selbstsigniert mit Cert-Pinning im Core oder Pflicht hinter Caddy? Soll `partial` als Stack-State reichen oder brauchen wir Service-Granularität in der Übersicht? Und: Registry-Auth für private Images (Forgejo-Registry!) schon in M4 oder später?
+**Entschiedene Designfragen** (Stand: vor M1): Agent-TLS modular — Agent spricht HTTP, TLS via Caddy-Proxy (Pflicht wegen PWA), Agent-eigenes Cert als späteres Modul. Stack-State in der Übersicht: ein Dot pro Stack plus „3/4"-Text bei `partial`, keine Service-Dots. Registry-Auth für private Images: ganz ans Ende (M5), Feed degradiert bis dahin leise. Kein Read-only-M1 — Entwicklung gegen dediziertes Testsystem.

@@ -1,13 +1,12 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
-import { createHash, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
 import { db } from '$lib/server/db';
 import { servers } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
 import { checkHealth, AgentError } from '$lib/server/agents/client';
-
-const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
+import { decrypt, encrypt } from '$lib/server/crypto';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	requireUser(locals);
@@ -28,13 +27,18 @@ export const actions: Actions = {
 		const [existing] = await db.select().from(servers).where(eq(servers.name, name));
 		if (existing) return fail(400, { error: `Server „${name}" existiert bereits.` });
 
-		// Token: einmalig im Klartext anzeigen, nur Hash in die DB
-		const token = randomBytes(32).toString('hex');
+		// Token: entweder vorgegeben (lokaler Agent aus .env) oder frisch generiert.
+		// Anzeige nur bei generierten Tokens — vorgegebene kennt der User schon.
+		const customToken = String(form.get('token') ?? '').trim();
+		if (customToken && !/^[a-f0-9]{64}$/i.test(customToken)) {
+			return fail(400, { error: 'Token muss 64 Hex-Zeichen sein (openssl rand -hex 32).' });
+		}
+		const token = customToken || randomBytes(32).toString('hex');
 		const [server] = await db
 			.insert(servers)
-			.values({ name, baseUrl, stacksPath, agentTokenHash: sha256(token) })
+			.values({ name, baseUrl, stacksPath, agentTokenEnc: encrypt(token) })
 			.returning();
-		return { created: { id: server.id, name, token } };
+		return { created: { id: server.id, name, token: customToken ? null : token } };
 	},
 
 	remove: async ({ locals, request }) => {
@@ -44,19 +48,13 @@ export const actions: Actions = {
 		return { removed: true };
 	},
 
-	// Verbindungstest: braucht das Klartext-Token (wird nie gespeichert)
 	test: async ({ locals, request }) => {
 		requireUser(locals);
-		const form = await request.formData();
-		const id = Number(form.get('id'));
-		const token = String(form.get('token') ?? '').trim();
+		const id = Number((await request.formData()).get('id'));
 		const [server] = await db.select().from(servers).where(eq(servers.id, id));
 		if (!server) return fail(404, { error: 'Server nicht gefunden.' });
-		if (sha256(token) !== server.agentTokenHash) {
-			return fail(400, { testResult: { id, ok: false, message: 'Token stimmt nicht mit dem registrierten überein.' } });
-		}
 		try {
-			const health = await checkHealth(server.baseUrl, token);
+			const health = await checkHealth(server.baseUrl, decrypt(server.agentTokenEnc));
 			await db.update(servers).set({ status: 'online', lastSeenAt: new Date() }).where(eq(servers.id, id));
 			return {
 				testResult: {

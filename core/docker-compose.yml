@@ -11,3 +11,22 @@ services:
       - ORIGIN=${ORIGIN}
       - SESSION_SECRET=${SESSION_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+    depends_on:
+      - agent
+
+  # Agent für das lokale System: in der UI als Server mit URL http://agent:8720
+  # registrieren, Token = LOCAL_AGENT_TOKEN aus der .env.
+  agent:
+    build: ../agent
+    container_name: dockposer-agent
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # WICHTIG: identischer Pfad innen wie außen! Der Agent führt `docker compose`
+      # gegen den Host-Socket aus — relative Bind-Mounts in deinen Stacks lösen
+      # sonst auf falsche Pfade auf. Beispiel für /home/martin/stacks:
+      - ${STACKS_PATH}:${STACKS_PATH}
+    environment:
+      - DOCKPOSER_TOKEN=${LOCAL_AGENT_TOKEN}
+      - DOCKPOSER_STACKS=${STACKS_PATH}
+      - DOCKPOSER_LISTEN=0.0.0.0:8720

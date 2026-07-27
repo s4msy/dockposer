@@ -1,0 +1,22 @@
+[Unit]
+Description=Dockposer Agent
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+# User anpassen: der User, dem der Stacks-Ordner gehört (braucht Docker-Gruppenrechte)
+User=docker-user
+EnvironmentFile=/etc/dockposer-agent.env
+ExecStart=/usr/local/bin/dockposer-agent
+Restart=on-failure
+RestartSec=5
+
+# Härtung
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/docker-user/stacks
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

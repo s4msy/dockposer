@@ -36,3 +36,16 @@ export async function agentFetch<T>(
 
 export const checkHealth = (baseUrl: string, token: string) =>
 	agentFetch<AgentHealth>(baseUrl, token, '/v1/health');
+
+export interface AgentStack {
+	name: string;
+	path: string;
+	compose_hash: string;
+	state: 'running' | 'partial' | 'stopped' | 'unknown';
+	services_running: number;
+	services_total: number;
+	drift: boolean;
+}
+
+export const fetchStacks = (baseUrl: string, token: string) =>
+	agentFetch<AgentStack[]>(baseUrl, token, '/v1/stacks');

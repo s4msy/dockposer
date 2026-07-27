@@ -18,8 +18,11 @@
 
 <style>
 	nav {
-		position: sticky;
+		position: fixed;
 		bottom: 0;
+		left: 0;
+		right: 0;
+		z-index: 10;
 		display: flex;
 		justify-content: space-around;
 		background: var(--color-surface);

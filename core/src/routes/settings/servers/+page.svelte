@@ -15,8 +15,12 @@
 {#if form?.created}
 	<div class="card" style="border-color: var(--color-ok);">
 		<strong>„{form.created.name}" registriert.</strong>
-		<p>Agent-Token — <strong>wird nur einmal angezeigt</strong>, gehört in die Agent-Config auf dem Server:</p>
-		<code style="word-break: break-all; display: block; padding: var(--space-2); background: var(--color-bg); border-radius: var(--radius);">{form.created.token}</code>
+		{#if form.created.token}
+			<p>Agent-Token — <strong>wird nur einmal angezeigt</strong>, gehört in die Agent-Config auf dem Server:</p>
+			<code style="word-break: break-all; display: block; padding: var(--space-2); background: var(--color-bg); border-radius: var(--radius);">{form.created.token}</code>
+		{:else}
+			<p>Mit deinem vorgegebenen Token registriert. Jetzt „Verbindung testen".</p>
+		{/if}
 	</div>
 {/if}
 
@@ -35,13 +39,9 @@
 			</p>
 		{/if}
 
-		<form method="POST" action="?/test" use:enhance style="display: flex; gap: var(--space-2); align-items: flex-end;">
+		<form method="POST" action="?/test" use:enhance>
 			<input type="hidden" name="id" value={server.id} />
-			<div style="flex: 1;">
-				<label for="token-{server.id}">Agent-Token</label>
-				<input id="token-{server.id}" name="token" type="password" autocomplete="off" style="margin-bottom: 0;" />
-			</div>
-			<button style="width: auto;">Testen</button>
+			<button>Verbindung testen</button>
 		</form>
 
 		<form
@@ -70,7 +70,10 @@
 		<label for="stacksPath">Stacks-Pfad auf dem Server</label>
 		<input id="stacksPath" name="stacksPath" placeholder="~/stacks" />
 
-		<button>Registrieren &amp; Token generieren</button>
+		<label for="token">Token (leer lassen = generieren; für den lokalen Agent: LOCAL_AGENT_TOKEN aus der .env)</label>
+		<input id="token" name="token" type="password" autocomplete="off" placeholder="optional" />
+
+		<button>Registrieren</button>
 	</form>
 {:else}
 	<button onclick={() => (showAdd = true)}>Server hinzufügen</button>

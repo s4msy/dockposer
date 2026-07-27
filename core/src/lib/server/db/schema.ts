@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 // ── Enums (SQLite: text mit Typisierung) ────────────────────────────────
 export const serverStatus = ['online', 'offline', 'degraded'] as const;
@@ -71,7 +71,7 @@ export const servers = sqliteTable('servers', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	name: text('name').notNull().unique(),
 	baseUrl: text('base_url').notNull(), // https://agent1.example.com — TLS macht der Proxy
-	agentTokenHash: text('agent_token_hash').notNull(),
+	agentTokenEnc: text('agent_token_enc').notNull(), // AES-256-GCM — Core braucht das Token im Klartext für Agent-Calls
 	status: text('status', { enum: serverStatus }).notNull().default('offline'),
 	stacksPath: text('stacks_path').notNull().default('~/stacks'),
 	sshUrl: text('ssh_url'), // ssh://user@host für den "Terminal öffnen"-Button (M4)
@@ -99,7 +99,7 @@ export const stacks = sqliteTable(
 		gitTracking: integer('git_tracking', { mode: 'boolean' }).notNull().default(false),
 		lastSyncedAt: integer('last_synced_at', { mode: 'timestamp' })
 	},
-	(t) => [index('stacks_server_idx').on(t.serverId), index('stacks_name_idx').on(t.serverId, t.name)]
+	(t) => [index('stacks_server_idx').on(t.serverId), uniqueIndex('stacks_name_idx').on(t.serverId, t.name)]
 );
 
 // ── Alerts ──────────────────────────────────────────────────────────────

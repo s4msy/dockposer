@@ -114,6 +114,21 @@
 		}
 	}
 
+	// Dockers "2.801MiB / 1.828GiB" → "2,8 MiB / 1,83 GiB" (deutsche Lesart, max. 2 Nachkommastellen)
+	function fmtSize(raw: string): string {
+		return raw.replace(/(\d+(?:\.\d+)?)\s*([KMGT]i?B|B)/g, (_, num, unit) => {
+			const n = parseFloat(num);
+			const rounded = n >= 100 ? Math.round(n).toString() : n.toFixed(n >= 10 ? 1 : 2);
+			return rounded.replace(/\.?0+$/, '').replace('.', ',') + '\u00a0' + unit;
+		});
+	}
+
+	function fmtCpu(raw: string): string {
+		const n = parseFloat(raw);
+		if (Number.isNaN(n)) return raw;
+		return n.toFixed(n >= 10 ? 0 : 1).replace('.', ',') + '\u00a0%';
+	}
+
 	function stateDot(state: string): string {
 		if (state === 'running') return 'running';
 		if (state === 'exited' || state === 'dead') return 'stopped';
@@ -153,7 +168,7 @@
 						{c.Service}
 						<small style="color: var(--color-text-dim); display: block;">{c.Status}{c.Health ? ` · ${c.Health}` : ''}</small>
 						{#if stats[c.Name]}
-							<small style="color: var(--color-text-dim); display: block;">CPU {stats[c.Name].cpu} · RAM {stats[c.Name].mem}</small>
+							<small style="color: var(--color-text-dim); display: block;">CPU {fmtCpu(stats[c.Name].cpu)} · RAM {fmtSize(stats[c.Name].mem)}</small>
 						{/if}
 					</span>
 					<button

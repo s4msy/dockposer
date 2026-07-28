@@ -12,6 +12,10 @@
 {#if showNav}
 	<nav>
 		<a href="/" aria-current={page.url.pathname === '/' ? 'page' : undefined}>Übersicht</a>
+		<a href="/alerts" aria-current={page.url.pathname.startsWith('/alerts') ? 'page' : undefined}>
+			Alerts
+			{#if page.data.openAlerts > 0}<span class="badge">{page.data.openAlerts}</span>{/if}
+		</a>
 		<a href="/settings" aria-current={page.url.pathname.startsWith('/settings') ? 'page' : undefined}>Einstellungen</a>
 	</nav>
 {/if}
@@ -40,5 +44,14 @@
 	nav a[aria-current='page'] {
 		color: var(--color-primary);
 		font-weight: 700;
+	}
+	.badge {
+		background: var(--color-crit);
+		color: #fff;
+		border-radius: 999px;
+		font-size: 0.7rem;
+		font-weight: 700;
+		padding: 1px 7px;
+		margin-left: 4px;
 	}
 </style>

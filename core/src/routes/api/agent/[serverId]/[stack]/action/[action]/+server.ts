@@ -5,6 +5,7 @@ import { servers } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { decrypt } from '$lib/server/crypto';
 import { agentStream, AgentError } from '$lib/server/agents/client';
+import { engine } from '$lib/server/alerts/engine';
 
 const ALLOWED = new Set(['up', 'down', 'pull', 'restart']);
 
@@ -15,6 +16,8 @@ export const POST: RequestHandler = async ({ locals, params }) => {
 	const [server] = await db.select().from(servers).where(eq(servers.id, Number(params.serverId)));
 	if (!server) error(404, 'Server nicht gefunden');
 
+	// Eigene Aktionen sollen keine Exit-Alerts auslösen (Projektname = normalisierter Ordnername)
+	engine.suppress(server.id, params.stack.toLowerCase().replace(/[^a-z0-9_-]/g, ''));
 	try {
 		const upstream = await agentStream(
 			server.baseUrl,

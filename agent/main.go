@@ -96,14 +96,15 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 		dockerVersion = strings.TrimSpace(out)
 	}
 	var st syscall.Statfs_t
-	var free uint64
+	var free, total uint64
 	if err := syscall.Statfs(stacksDir, &st); err == nil {
 		free = st.Bavail * uint64(st.Bsize)
+		total = st.Blocks * uint64(st.Bsize)
 	}
 	writeJSON(w, map[string]any{
 		"version":        version,
 		"docker_version": dockerVersion,
-		"disk":           map[string]any{"stacks_path": stacksDir, "free_bytes": free},
+		"disk":           map[string]any{"stacks_path": stacksDir, "free_bytes": free, "total_bytes": total},
 	})
 }
 

@@ -16,11 +16,10 @@
 
 {#each data.servers as server (server.id)}
 	<div class="card">
-		<div style="display: flex; align-items: center; gap: var(--space-2);">
-			<strong style="flex: 1;">{server.name}
-				<span class="dot {server.status === 'online' ? 'running' : 'stopped'}" aria-label={server.status}></span>
-			</strong>
-			<a href="/servers/{server.id}/new-stack" style="text-decoration: none;">+ Stack</a>
+		<div class="server-head">
+			<span class="server-name">{server.name}</span>
+			<span class="dot {server.status === 'online' ? 'running' : 'stopped'}" aria-label={server.status}></span>
+			<a href="/servers/{server.id}/new-stack" style="text-decoration: none; margin-left: auto;">+ Stack</a>
 		</div>
 		<ul style="list-style:none; padding:0; margin:var(--space-2) 0 0;">
 			{#each stacksFor(server.id) as stack (stack.id)}

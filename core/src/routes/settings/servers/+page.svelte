@@ -3,6 +3,17 @@
 	import { enhance } from '$app/forms';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	let showAdd = $state(false);
+	let copied = $state(false);
+
+	$effect(() => {
+		if (form?.created) showAdd = false;
+	});
+
+	function copyToken(token: string) {
+		navigator.clipboard.writeText(token);
+		copied = true;
+		setTimeout(() => (copied = false), 2000);
+	}
 </script>
 
 <h1>Server</h1>
@@ -10,18 +21,6 @@
 
 {#if form?.error}
 	<div class="alert-error" role="alert">{form.error}</div>
-{/if}
-
-{#if form?.created}
-	<div class="card" style="border-color: var(--color-ok);">
-		<strong>„{form.created.name}" registriert.</strong>
-		{#if form.created.token}
-			<p>Agent-Token — <strong>wird nur einmal angezeigt</strong>, gehört in die Agent-Config auf dem Server:</p>
-			<code style="word-break: break-all; display: block; padding: var(--space-2); background: var(--color-bg); border-radius: var(--radius);">{form.created.token}</code>
-		{:else}
-			<p>Mit deinem vorgegebenen Token registriert. Jetzt „Verbindung testen".</p>
-		{/if}
-	</div>
 {/if}
 
 {#each data.servers as server (server.id)}
@@ -69,7 +68,25 @@
 	</div>
 {/each}
 
-{#if showAdd}
+{#if form?.created}
+	<div class="card" style="border-color: var(--color-ok);">
+		<strong>„{form.created.name}" registriert.</strong>
+		{#if form.created.token}
+			<p>Agent-Token — <strong>wird nur einmal angezeigt</strong>:</p>
+			<div style="display: flex; gap: var(--space-2); align-items: center;">
+				<code style="word-break: break-all; flex: 1; padding: var(--space-2); background: var(--color-bg); border-radius: var(--radius);">{form.created.token}</code>
+				<button style="width: auto;" onclick={() => copyToken(form.created.token)}>{copied ? '✓' : 'Kopieren'}</button>
+			</div>
+			<details style="margin-top: var(--space-2);">
+				<summary>Agent-Installation auf dem Server (Einzeiler)</summary>
+				<p style="color: var(--color-text-dim);">RAW-BASE durch die Raw-URL deines Forgejo-Repos ersetzen (…/raw/branch/main):</p>
+				<code style="word-break: break-all; display: block; padding: var(--space-2); background: var(--color-bg); border-radius: var(--radius); font-size: 0.8rem;">curl -fsSL RAW-BASE/agent/install.sh | sudo sh -s -- --base RAW-BASE --token {form.created.token}</code>
+			</details>
+		{:else}
+			<p>Mit deinem vorgegebenen Token registriert. Jetzt „Verbindung testen".</p>
+		{/if}
+	</div>
+{:else if showAdd}
 	<form method="POST" action="?/add" class="card" use:enhance>
 		<label for="name">Name</label>
 		<input id="name" name="name" placeholder="hetzner-1" required />

@@ -21,6 +21,8 @@ export const actions: Actions = {
 		const name = String(form.get('name') ?? '').trim();
 		const baseUrl = String(form.get('baseUrl') ?? '').trim().replace(/\/$/, '');
 		const stacksPath = String(form.get('stacksPath') ?? '').trim() || '~/stacks';
+		const sshUrl = String(form.get('sshUrl') ?? '').trim() || null;
+		if (sshUrl && !/^ssh:\/\//.test(sshUrl)) return fail(400, { error: 'SSH-URL muss mit ssh:// beginnen.' });
 
 		if (!name) return fail(400, { error: 'Name fehlt.' });
 		if (!/^https?:\/\//.test(baseUrl)) return fail(400, { error: 'Base-URL muss mit http(s):// beginnen.' });
@@ -36,9 +38,19 @@ export const actions: Actions = {
 		const token = customToken || randomBytes(32).toString('hex');
 		const [server] = await db
 			.insert(servers)
-			.values({ name, baseUrl, stacksPath, agentTokenEnc: encrypt(token) })
+			.values({ name, baseUrl, stacksPath, sshUrl, agentTokenEnc: encrypt(token) })
 			.returning();
 		return { created: { id: server.id, name, token: customToken ? null : token } };
+	},
+
+	setSsh: async ({ locals, request }) => {
+		requireUser(locals);
+		const form = await request.formData();
+		const id = Number(form.get('id'));
+		const sshUrl = String(form.get('sshUrl') ?? '').trim() || null;
+		if (sshUrl && !/^ssh:\/\//.test(sshUrl)) return fail(400, { error: 'SSH-URL muss mit ssh:// beginnen.' });
+		await db.update(servers).set({ sshUrl }).where(eq(servers.id, id));
+		return { sshSaved: id };
 	},
 
 	remove: async ({ locals, request }) => {

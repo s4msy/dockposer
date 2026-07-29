@@ -178,7 +178,12 @@
 	{data.name}
 	<small style="color: var(--color-text-dim); font-weight: 400;">auf {data.server.name}</small>
 </h1>
-<p><a href="/">← Übersicht</a></p>
+<p style="display: flex; gap: var(--space-3);">
+	<a href="/">← Übersicht</a>
+	{#if data.server.sshUrl}
+		<a href={data.server.sshUrl} style="margin-left: auto;">Terminal öffnen ↗</a>
+	{/if}
+</p>
 
 {#if data.agentOffline}
 	<div class="alert-error" role="alert">Agent nicht erreichbar — Anzeige ggf. veraltet, Aktionen deaktiviert.</div>

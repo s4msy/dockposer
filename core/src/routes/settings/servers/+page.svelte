@@ -44,6 +44,16 @@
 			<button>Verbindung testen</button>
 		</form>
 
+		<form method="POST" action="?/setSsh" use:enhance style="display: flex; gap: var(--space-2); align-items: flex-end; margin-top: var(--space-2);">
+			<input type="hidden" name="id" value={server.id} />
+			<div style="flex: 1;">
+				<label for="ssh-{server.id}">SSH-URL</label>
+				<input id="ssh-{server.id}" name="sshUrl" placeholder="ssh://user@host" value={server.sshUrl ?? ''} style="margin-bottom: 0;" />
+			</div>
+			<button style="width: auto;">OK</button>
+		</form>
+		{#if form?.sshSaved === server.id}<small role="status" style="color: var(--color-ok);">SSH-URL gespeichert.</small>{/if}
+
 		<form
 			method="POST"
 			action="?/remove"
@@ -69,6 +79,9 @@
 
 		<label for="stacksPath">Stacks-Pfad auf dem Server</label>
 		<input id="stacksPath" name="stacksPath" placeholder="~/stacks" />
+
+		<label for="sshUrl">SSH-URL (optional, für den „Terminal öffnen"-Button)</label>
+		<input id="sshUrl" name="sshUrl" placeholder="ssh://user@host" />
 
 		<label for="token">Token (leer lassen = generieren; für den lokalen Agent: LOCAL_AGENT_TOKEN aus der .env)</label>
 		<input id="token" name="token" type="password" autocomplete="off" placeholder="optional" />

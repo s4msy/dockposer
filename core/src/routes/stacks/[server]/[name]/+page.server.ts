@@ -29,7 +29,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			fetchStackPs(server.baseUrl, token, params.name)
 		]);
 		return {
-			server: { id: server.id, name: server.name },
+			server: { id: server.id, name: server.name, sshUrl: server.sshUrl },
 			stack: stack ?? null,
 			name: params.name,
 			compose,
@@ -43,7 +43,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		if (e instanceof AgentError && e.status === 404) error(404, 'Stack nicht gefunden');
 		// Agent nicht erreichbar → Seite trotzdem rendern, mit Cache-Stand
 		return {
-			server: { id: server.id, name: server.name },
+			server: { id: server.id, name: server.name, sshUrl: server.sshUrl },
 			stack: stack ?? null,
 			name: params.name,
 			compose: null,

@@ -59,6 +59,21 @@
 	let passkeyError = $state('');
 	let passkeyBusy = $state(false);
 
+	// Install-Prompt (Chromium): beforeinstallprompt abfangen, Button anbieten
+	let installEvent = $state<Event & { prompt: () => Promise<void> } | null>(null);
+	$effect(() => {
+		const handler = (e: Event) => {
+			e.preventDefault();
+			installEvent = e as Event & { prompt: () => Promise<void> };
+		};
+		window.addEventListener('beforeinstallprompt', handler);
+		return () => window.removeEventListener('beforeinstallprompt', handler);
+	});
+	async function installApp() {
+		await installEvent?.prompt();
+		installEvent = null;
+	}
+
 	async function addPasskey() {
 		passkeyBusy = true;
 		passkeyError = '';
@@ -137,6 +152,14 @@
 		<form method="POST" action="?/totpStart"><button>TOTP einrichten</button></form>
 	{/if}
 </div>
+
+{#if installEvent}
+	<div class="card">
+		<strong>Als App installieren</strong>
+		<p style="color: var(--color-text-dim);">Dockposer zum Homescreen/Desktop hinzufügen — für Push und Badge-Anzeige.</p>
+		<button onclick={installApp}>Installieren</button>
+	</div>
+{/if}
 
 <div class="card">
 	<strong>Passkeys</strong>

@@ -9,6 +9,15 @@
 			navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('SW-Registrierung:', e));
 		}
 	});
+
+	// App-Icon-Badge: Anzahl offener Alerts (Badging API — wo verfügbar)
+	$effect(() => {
+		const n = page.data.openAlerts ?? 0;
+		if ('setAppBadge' in navigator) {
+			if (n > 0) navigator.setAppBadge(n).catch(() => {});
+			else navigator.clearAppBadge?.().catch(() => {});
+		}
+	});
 </script>
 
 <main>

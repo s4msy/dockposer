@@ -51,24 +51,46 @@ async function anonymousToken(wwwAuth: string): Promise<string | null> {
 	return body.token ?? body.access_token ?? null;
 }
 
-/** Digest des Manifests für host/repo:tag — oder null, wenn nicht ermittelbar (privat, offline, exotisch). */
-export async function registryDigest(ref: ImageRef): Promise<string | null> {
-	const url = `https://${ref.host}/v2/${ref.repo}/manifests/${ref.tag}`;
+async function authedFetch(url: string, method: 'HEAD' | 'GET'): Promise<Response | null> {
 	try {
-		let res = await fetch(url, { method: 'HEAD', headers: { Accept: ACCEPT }, signal: AbortSignal.timeout(10_000) });
+		let res = await fetch(url, { method, headers: { Accept: ACCEPT }, signal: AbortSignal.timeout(10_000) });
 		if (res.status === 401) {
 			const wwwAuth = res.headers.get('www-authenticate');
 			const token = wwwAuth ? await anonymousToken(wwwAuth) : null;
 			if (!token) return null; // Auth nötig → „Check nicht möglich"
 			res = await fetch(url, {
-				method: 'HEAD',
+				method,
 				headers: { Accept: ACCEPT, Authorization: `Bearer ${token}` },
 				signal: AbortSignal.timeout(10_000)
 			});
 		}
-		if (!res.ok) return null;
-		return res.headers.get('docker-content-digest');
+		return res.ok ? res : null;
 	} catch {
 		return null;
 	}
+}
+
+/** Digest des Manifests für host/repo:tag — oder null, wenn nicht ermittelbar (privat, offline, exotisch). */
+export async function registryDigest(ref: ImageRef): Promise<string | null> {
+	const res = await authedFetch(`https://${ref.host}/v2/${ref.repo}/manifests/${ref.tag}`, 'HEAD');
+	return res?.headers.get('docker-content-digest') ?? null;
+}
+
+/**
+ * Gegenprüfung für Multi-Arch: Digests der Plattform-Manifeste in der Manifestliste.
+ * Lokal kann statt des Listen-Digests der amd64-Manifest-Digest hinterlegt sein —
+ * gleiche Version, anderer Hash. Ohne diese Prüfung: ewige Phantom-Updates.
+ */
+export async function manifestChildDigests(ref: ImageRef): Promise<string[]> {
+	const res = await authedFetch(`https://${ref.host}/v2/${ref.repo}/manifests/${ref.tag}`, 'GET');
+	if (!res) return [];
+	try {
+		const body = await res.json();
+		if (Array.isArray(body.manifests)) {
+			return body.manifests.map((m: { digest?: string }) => m.digest).filter(Boolean);
+		}
+	} catch {
+		/* kein Index/Liste — dann gibt es keine Kinder */
+	}
+	return [];
 }

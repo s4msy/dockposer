@@ -119,6 +119,7 @@ export interface AgentImage {
 	service: string;
 	image: string;
 	digest: string;
+	digests?: string[]; // alle RepoDigests des Images
 	Digest?: string; // Kompatibilität
 }
 

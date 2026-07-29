@@ -1,5 +1,5 @@
 import { db } from '$lib/server/db';
-import { stacks, updateRuns } from '$lib/server/db/schema';
+import { servers, stacks, updateRuns } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { engine } from '$lib/server/alerts/engine';
 
@@ -58,6 +58,17 @@ export async function recordUpdateRun(
 		await engine.updateProblem(serverId, stackName, kind, message);
 	} else if (parsed.result === 'success') {
 		await engine.updateOk(serverId, stackName);
+	}
+
+	// Feed direkt neu prüfen, damit erledigte Updates sofort verschwinden
+	try {
+		const [server] = await db.select().from(servers).where(eq(servers.id, serverId));
+		if (server) {
+			const { checkStackUpdates } = await import('./checker');
+			await checkStackUpdates(server, stackName);
+		}
+	} catch {
+		/* nächster Scheduler-Lauf korrigiert es */
 	}
 	return parsed;
 }

@@ -24,9 +24,10 @@ import (
 const rollbackFile = ".dockposer-rollback.yaml"
 
 type serviceImage struct {
-	Service string `json:"service"`
-	Image   string `json:"image"`
-	Digest  string `json:"digest"` // RepoDigest (repo@sha256:…) oder leer
+	Service string   `json:"service"`
+	Image   string   `json:"image"`
+	Digest  string   `json:"digest"`  // erster RepoDigest (repo@sha256:…) oder leer
+	Digests []string `json:"digests"` // alle RepoDigests — ein Image kann mehrere tragen!
 }
 
 // ── GET /v1/stacks/{name}/images ────────────────────────────────────────
@@ -67,17 +68,26 @@ func stackImages(ctx context.Context, dir string) ([]serviceImage, error) {
 		if img == "" {
 			continue // build-basierte Services haben kein Registry-Image
 		}
-		imgs = append(imgs, serviceImage{Service: name, Image: img, Digest: imageDigest(ctx, img)})
+		digests := imageDigests(ctx, img)
+		first := ""
+		if len(digests) > 0 {
+			first = digests[0]
+		}
+		imgs = append(imgs, serviceImage{Service: name, Image: img, Digest: first, Digests: digests})
 	}
 	return imgs, nil
 }
 
-func imageDigest(ctx context.Context, image string) string {
-	out, err := run(ctx, "", 10*time.Second, "docker", "image", "inspect", "--format", "{{index .RepoDigests 0}}", image)
+func imageDigests(ctx context.Context, image string) []string {
+	out, err := run(ctx, "", 10*time.Second, "docker", "image", "inspect", "--format", "{{json .RepoDigests}}", image)
 	if err != nil {
-		return ""
+		return nil
 	}
-	return strings.TrimSpace(out)
+	var digests []string
+	if json.Unmarshal([]byte(strings.TrimSpace(out)), &digests) != nil {
+		return nil
+	}
+	return digests
 }
 
 // ── POST /v1/stacks/{name}/update?window=90 ─────────────────────────────

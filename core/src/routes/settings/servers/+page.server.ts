@@ -8,6 +8,21 @@ import { requireUser } from '$lib/server/guards';
 import { checkHealth, AgentError } from '$lib/server/agents/client';
 import { decrypt, encrypt } from '$lib/server/crypto';
 
+/** ssh://user@host[:port] — fängt insbesondere den Doppelpunkt-Tippfehler ab. */
+function validateSshUrl(raw: string): { ok: true; value: string | null } | { ok: false; error: string } {
+	const value = raw.trim();
+	if (!value) return { ok: true, value: null };
+	if (!value.startsWith('ssh://')) return { ok: false, error: 'SSH-URL muss mit ssh:// beginnen.' };
+	const rest = value.slice(6);
+	if (!rest.includes('@') && rest.includes(':') && !/:\d{1,5}$/.test(rest)) {
+		return { ok: false, error: 'Zwischen User und Host gehört ein @, kein Doppelpunkt: ssh://user@host' };
+	}
+	if (!/^(?:[\w.-]+@)?[\w.-]+(?::\d{1,5})?$/.test(rest)) {
+		return { ok: false, error: 'Format: ssh://user@host oder ssh://user@host:port' };
+	}
+	return { ok: true, value };
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
 	requireUser(locals);
 	const list = await db.query.servers.findMany({ orderBy: (s, { asc }) => [asc(s.name)] });
@@ -21,8 +36,9 @@ export const actions: Actions = {
 		const name = String(form.get('name') ?? '').trim();
 		const baseUrl = String(form.get('baseUrl') ?? '').trim().replace(/\/$/, '');
 		const stacksPath = String(form.get('stacksPath') ?? '').trim() || '~/stacks';
-		const sshUrl = String(form.get('sshUrl') ?? '').trim() || null;
-		if (sshUrl && !/^ssh:\/\//.test(sshUrl)) return fail(400, { error: 'SSH-URL muss mit ssh:// beginnen.' });
+		const sshCheck = validateSshUrl(String(form.get('sshUrl') ?? ''));
+		if (!sshCheck.ok) return fail(400, { error: sshCheck.error });
+		const sshUrl = sshCheck.value;
 
 		if (!name) return fail(400, { error: 'Name fehlt.' });
 		if (!/^https?:\/\//.test(baseUrl)) return fail(400, { error: 'Base-URL muss mit http(s):// beginnen.' });
@@ -47,9 +63,9 @@ export const actions: Actions = {
 		requireUser(locals);
 		const form = await request.formData();
 		const id = Number(form.get('id'));
-		const sshUrl = String(form.get('sshUrl') ?? '').trim() || null;
-		if (sshUrl && !/^ssh:\/\//.test(sshUrl)) return fail(400, { error: 'SSH-URL muss mit ssh:// beginnen.' });
-		await db.update(servers).set({ sshUrl }).where(eq(servers.id, id));
+		const sshCheck = validateSshUrl(String(form.get('sshUrl') ?? ''));
+		if (!sshCheck.ok) return fail(400, { error: sshCheck.error });
+		await db.update(servers).set({ sshUrl: sshCheck.value }).where(eq(servers.id, id));
 		return { sshSaved: id };
 	},
 

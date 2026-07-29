@@ -116,3 +116,25 @@ label { display: block; margin-bottom: var(--space-1); color: var(--color-text-d
 	font-size: 0.85rem;
 	color: var(--color-primary);
 }
+
+/* Konsolen-Ausgabe im Terminal-Look — reine Optik, kein PTY, kein xterm.js */
+.term {
+	background: #14100e;
+	color: #d6cfc7;
+	border: 1px solid #2c2622;
+	border-radius: var(--radius);
+	padding: var(--space-3) var(--space-4);
+	margin-bottom: var(--space-3);
+	font-family: ui-monospace, 'Cascadia Mono', 'JetBrains Mono', monospace;
+	font-size: 0.8rem;
+	line-height: 1.5;
+	max-height: 45dvh;
+	overflow: auto;
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+.term-line.cmd { color: #f0e9e2; font-weight: 700; }
+.term-line.ok { color: #7bc98a; }
+.term-line.err { color: #e8837a; }
+.term-line.warn { color: #d9b45b; }
+.term-line.dim { color: #7a6f66; }

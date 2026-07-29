@@ -4,7 +4,21 @@
 	import { invalidateAll } from '$app/navigation';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
-	let output = $state<string[]>([]);
+	let output = $state<{ text: string; cls: string }[]>([]);
+
+	function classify(line: string): string {
+		if (line.startsWith('$ ') || line.startsWith('──')) return 'cmd';
+		if (/✓|erfolgreich|Pulled|Started|Healthy/i.test(line)) return 'ok';
+		if (/error|failed|fehlgeschlagen|Rollback|unhealthy|Instabil|denied/i.test(line)) return 'err';
+		if (/warn/i.test(line)) return 'warn';
+		if (line.startsWith('  …') || line.startsWith('…') || line.startsWith('  ')) return 'dim';
+		return '';
+	}
+	const pushLine = (text: string, cls?: string) => {
+		output = [...output, { text, cls: cls ?? classify(text) }];
+		if (output.length > 2000) output = output.slice(-1500);
+		outputEl?.scrollTo(0, outputEl.scrollHeight);
+	};
 	let busy = $state<string | null>(null);
 	let logSource = $state<{ container: string; abort: AbortController } | null>(null);
 	let editorContent = $state(data.compose?.content ?? '');
@@ -42,8 +56,9 @@
 		if (data.compose && !busy) editorContent = data.compose.content;
 	});
 
-	// SSE-Zeilen aus einem fetch-Stream lesen (POST → kein EventSource möglich)
-	async function readSse(res: Response, onLine: (line: string) => void) {
+	// SSE aus einem fetch-Stream lesen (POST → kein EventSource möglich).
+	// Liefert pro Block Event-Name (default 'message') + Datenzeile.
+	async function readSse(res: Response, onEvent: (event: string, data: string) => void) {
 		const reader = res.body!.getReader();
 		const decoder = new TextDecoder();
 		let buf = '';
@@ -54,8 +69,10 @@
 			const parts = buf.split('\n\n');
 			buf = parts.pop() ?? '';
 			for (const part of parts) {
+				let event = 'message';
 				for (const line of part.split('\n')) {
-					if (line.startsWith('data: ')) onLine(line.slice(6));
+					if (line.startsWith('event: ')) event = line.slice(7).trim();
+					else if (line.startsWith('data: ')) onEvent(event, line.slice(6));
 				}
 			}
 		}
@@ -64,21 +81,41 @@
 	async function runAction(action: string) {
 		if (busy) return;
 		busy = action;
-		output = [`$ docker compose ${action}`];
+		output = [];
+		pushLine(`$ docker compose ${action}`, 'cmd');
 		try {
 			const res = await fetch(`/api/agent/${data.server.id}/${encodeURIComponent(data.name)}/action/${action}`, {
 				method: 'POST'
 			});
 			if (!res.ok) {
-				output = [...output, `Fehler: ${res.status} ${await res.text()}`];
+				pushLine(`Fehler: ${res.status} ${await res.text()}`, 'err');
 				return;
 			}
-			await readSse(res, (line) => {
-				output = [...output, line];
-				outputEl?.scrollTo(0, outputEl.scrollHeight);
+			await readSse(res, (event, line) => {
+				if (event === 'result') {
+					try {
+						const r = JSON.parse(line);
+						if (r.result === 'success') {
+							const changed = Object.entries(r.new_digests ?? {}).filter(
+								([svc, d]) => (r.old_digests ?? {})[svc] !== d
+							).length;
+							pushLine(changed > 0 ? `── Ergebnis: Erfolg, ${changed} Service(s) aktualisiert ──` : '── Ergebnis: bereits aktuell, keine Änderung ──', 'ok');
+						} else if (r.result === 'rolled_back') {
+							pushLine(`── Ergebnis: Rollback aktiv (${r.reason ?? ''}) ──`, 'err');
+						} else {
+							pushLine(`── Ergebnis: fehlgeschlagen (${r.reason ?? r.stage ?? ''}) ──`, 'err');
+						}
+					} catch {
+						pushLine(line);
+					}
+				} else if (event === 'exit') {
+					pushLine(line === '0' ? '— fertig —' : `— beendet mit Exit ${line} —`, line === '0' ? 'dim' : 'err');
+				} else {
+					pushLine(line);
+				}
 			});
 		} catch (e) {
-			output = [...output, `Verbindung abgebrochen: ${e}`];
+			pushLine(`Verbindung abgebrochen: ${e}`, 'err');
 		} finally {
 			busy = null;
 			await invalidateAll();
@@ -95,20 +132,20 @@
 		logSource?.abort.abort();
 		const abort = new AbortController();
 		logSource = { container: containerName, abort };
-		output = [`── Logs: ${containerName} ──`];
+		output = [];
+		pushLine(`── Logs: ${containerName} ──`, 'cmd');
 		try {
 			const res = await fetch(
 				`/api/agent/${data.server.id}/${encodeURIComponent(data.name)}/logs/${encodeURIComponent(containerName)}?tail=200`,
 				{ signal: abort.signal }
 			);
 			if (!res.ok) {
-				output = [...output, `Fehler: ${res.status}`];
+				pushLine(`Fehler: ${res.status}`, 'err');
 				return;
 			}
-			await readSse(res, (line) => {
-				output = [...output, line];
-				if (output.length > 2000) output = output.slice(-1500); // Speicher-Deckel
-				outputEl?.scrollTo(0, outputEl.scrollHeight);
+			await readSse(res, (event, line) => {
+				if (event === 'exit') pushLine('— Log-Stream beendet —', 'dim');
+				else pushLine(line, '');
 			});
 		} catch {
 			/* abort ist der Normalfall */
@@ -157,10 +194,9 @@
 	</div>
 {/if}
 
-<div class="card" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2);">
+<div class="card" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-2);">
 	<button disabled={!!busy || data.agentOffline} onclick={() => runAction('up')}>up -d</button>
 	<button disabled={!!busy || data.agentOffline} onclick={() => runAction('restart')}>restart</button>
-	<button disabled={!!busy || data.agentOffline} onclick={() => runAction('pull')}>pull</button>
 	<button
 		disabled={!!busy || data.agentOffline}
 		style="background: transparent; color: var(--color-crit); border: 1px solid var(--color-crit);"
@@ -201,10 +237,7 @@
 		<form method="POST" action="?/checkUpdates" use:enhance>
 			<button style="background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);" disabled={data.agentOffline}>Nach Updates suchen</button>
 		</form>
-		<button
-			disabled={!!busy || data.agentOffline || !data.updates.some((u: { status: string }) => u.status === 'update')}
-			onclick={() => runAction('update')}
-		>Update (Auto-Rollback)</button>
+		<button disabled={!!busy || data.agentOffline} onclick={() => runAction('update')}>Update (Auto-Rollback)</button>
 	</div>
 
 	<form method="POST" action="?/setPolicy" use:enhance style="margin-top: var(--space-3); display: flex; gap: var(--space-2); align-items: center;">
@@ -245,11 +278,7 @@
 {/if}
 
 {#if output.length > 0}
-	<div
-		class="card"
-		bind:this={outputEl}
-		style="font-family: ui-monospace, monospace; font-size: 0.8rem; max-height: 40dvh; overflow: auto; white-space: pre-wrap; word-break: break-all;"
-	>{#each output as line}{line + '\n'}{/each}</div>
+	<div class="term" bind:this={outputEl}>{#each output as line}<span class="term-line {line.cls}">{line.text + '\n'}</span>{/each}</div>
 {/if}
 
 {#if data.compose}

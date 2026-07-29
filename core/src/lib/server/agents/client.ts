@@ -114,3 +114,13 @@ export const createStack = (baseUrl: string, token: string, name: string, conten
 		body: JSON.stringify({ name, content }),
 		headers: { 'Content-Type': 'application/json' }
 	}, 20_000);
+
+export interface AgentImage {
+	service: string;
+	image: string;
+	digest: string;
+	Digest?: string; // Kompatibilität
+}
+
+export const fetchImages = (baseUrl: string, token: string, stack: string) =>
+	agentFetch<AgentImage[]>(baseUrl, token, `/v1/stacks/${encodeURIComponent(stack)}/images`, {}, 30_000);

@@ -15,6 +15,13 @@
       "when": 1785180741845,
       "tag": "0001_agent_token_enc",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785303862578,
+      "tag": "0002_stack_updates",
+      "breakpoints": true
     }
   ]
 }

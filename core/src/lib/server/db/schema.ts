@@ -97,7 +97,9 @@ export const stacks = sqliteTable(
 		drift: integer('drift', { mode: 'boolean' }).notNull().default(false),
 		updatePolicy: text('update_policy', { enum: updatePolicy }).notNull().default('manual'),
 		gitTracking: integer('git_tracking', { mode: 'boolean' }).notNull().default(false),
-		lastSyncedAt: integer('last_synced_at', { mode: 'timestamp' })
+		lastSyncedAt: integer('last_synced_at', { mode: 'timestamp' }),
+		updatesJson: text('updates_json'), // Cache des letzten Registry-Checks: [{service,image,current,latest,status}]
+		lastUpdateCheck: integer('last_update_check', { mode: 'timestamp' })
 	},
 	(t) => [index('stacks_server_idx').on(t.serverId), uniqueIndex('stacks_name_idx').on(t.serverId, t.name)]
 );

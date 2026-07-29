@@ -6,6 +6,7 @@ import { and, eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
 import { decrypt } from '$lib/server/crypto';
 import { fetchCompose, fetchStackPs, putCompose, AgentError } from '$lib/server/agents/client';
+import { checkStackUpdates } from '$lib/server/updates/checker';
 
 async function loadServer(serverId: string) {
 	const [server] = await db.select().from(servers).where(eq(servers.id, Number(serverId)));
@@ -33,6 +34,9 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			name: params.name,
 			compose,
 			containers,
+			updates: stack?.updatesJson ? JSON.parse(stack.updatesJson) : [],
+			lastUpdateCheck: stack?.lastUpdateCheck ?? null,
+			updatePolicy: stack?.updatePolicy ?? 'manual',
 			agentOffline: false
 		};
 	} catch (e) {
@@ -44,12 +48,37 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			name: params.name,
 			compose: null,
 			containers: [],
+			updates: stack?.updatesJson ? JSON.parse(stack.updatesJson) : [],
+			lastUpdateCheck: stack?.lastUpdateCheck ?? null,
+			updatePolicy: stack?.updatePolicy ?? 'manual',
 			agentOffline: true
 		};
 	}
 };
 
 export const actions: Actions = {
+	checkUpdates: async ({ locals, params }) => {
+		requireUser(locals);
+		const server = await loadServer(params.server);
+		try {
+			await checkStackUpdates(server, params.name);
+			return { checked: true };
+		} catch (e) {
+			const msg = e instanceof AgentError ? e.message : 'Check fehlgeschlagen';
+			return fail(502, { checkError: msg });
+		}
+	},
+
+	setPolicy: async ({ locals, params, request }) => {
+		requireUser(locals);
+		const server = await loadServer(params.server);
+		const policy = String((await request.formData()).get('policy') ?? '');
+		if (!['manual', 'auto'].includes(policy)) return fail(400, { policyError: 'Ungültige Policy.' });
+		await db.update(stacks).set({ updatePolicy: policy as 'manual' | 'auto' })
+			.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
+		return { policySaved: true };
+	},
+
 	saveCompose: async ({ locals, params, request }) => {
 		requireUser(locals);
 		const server = await loadServer(params.server);

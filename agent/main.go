@@ -63,6 +63,8 @@ func main() {
 	mux.HandleFunc("GET /v1/stats", handleStats)
 	mux.HandleFunc("GET /v1/stacks/{name}/compose", handleComposeGet)
 	mux.HandleFunc("GET /v1/stacks/{name}/ps", handleStackPs)
+	mux.HandleFunc("GET /v1/stacks/{name}/images", handleStackImages)
+	mux.HandleFunc("POST /v1/stacks/{name}/update", handleUpdate)
 	mux.HandleFunc("PUT /v1/stacks/{name}/compose", handleComposePut)
 	mux.HandleFunc("POST /v1/stacks/{name}/up", action("up", "-d"))
 	mux.HandleFunc("POST /v1/stacks/{name}/down", action("down"))
@@ -273,11 +275,13 @@ func handleComposeGet(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	_, pinErr := os.Stat(filepath.Join(dir, rollbackFile))
 	writeJSON(w, map[string]any{
 		"file":      filepath.Base(cf),
 		"content":   string(content),
 		"hash":      hashComposeFiles(dir),
 		"env_files": envFiles,
+		"pinned":    pinErr == nil, // .dockposer-rollback.yaml vorhanden → läuft auf altem Stand
 	})
 }
 

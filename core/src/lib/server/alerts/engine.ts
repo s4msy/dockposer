@@ -34,16 +34,22 @@ class AlertEngine {
 
 	// ── Regeln (globale Defaults, Scope-Kaskade folgt später) ──
 	async ensureDefaultRules() {
-		const existing = await db.select({ id: alertRules.id }).from(alertRules).limit(1);
-		if (existing.length > 0) return;
-		await db.insert(alertRules).values([
+		// Additiv: fehlende Regel-Typen nachziehen (neue Releases bringen neue Typen mit)
+		const defaults: { type: AlertType; thresholdJson?: string }[] = [
 			{ type: 'crash_loop', thresholdJson: JSON.stringify({ restarts: 3, window_min: 5 }) },
 			{ type: 'container_exit' },
 			{ type: 'unhealthy' },
 			{ type: 'oom_kill' },
 			{ type: 'agent_offline' },
-			{ type: 'disk_space', thresholdJson: JSON.stringify({ free_percent: 10 }) }
-		]);
+			{ type: 'disk_space', thresholdJson: JSON.stringify({ free_percent: 10 }) },
+			{ type: 'pull_failed' },
+			{ type: 'update_rolled_back' }
+		];
+		for (const def of defaults) {
+			const [existing] = await db.select({ id: alertRules.id }).from(alertRules)
+				.where(and(eq(alertRules.type, def.type), eq(alertRules.scope, 'global'))).limit(1);
+			if (!existing) await db.insert(alertRules).values(def);
+		}
 	}
 
 	private async rule(type: AlertType) {
@@ -133,6 +139,17 @@ class AlertEngine {
 				return;
 			}
 		}
+	}
+
+	// ── Updates: Ergebnis-Alerts (Container-Feld trägt hier den Stack-Namen) ──
+	async updateProblem(serverId: number, stackName: string, kind: 'pull_failed' | 'update_rolled_back', message: string) {
+		if ((await this.rule(kind))?.enabled) {
+			await this.fire(kind, kind === 'pull_failed' ? 'warning' : 'critical', serverId, undefined, stackName, message);
+		}
+	}
+
+	async updateOk(serverId: number, stackName: string) {
+		await this.resolve(serverId, stackName, ['pull_failed', 'update_rolled_back']);
 	}
 
 	// ── Server-Ebene: Agent offline / Disk ──

@@ -31,6 +31,7 @@
 						<small>{stack.servicesRunning}/{stack.servicesTotal}</small>
 					{/if}
 					{#if stack.drift}<small style="color:var(--color-warn)">drift</small>{/if}
+					{#if stack.updatesCount > 0}<small style="color:var(--color-warn); margin-left:auto;">{stack.updatesCount}↑</small>{/if}
 					</a>
 				</li>
 			{/each}

@@ -10,6 +10,8 @@ export const init: ServerInit = async () => {
 	g.__dockposerAlertsStarted = true;
 	const { startAlertSystem } = await import('$lib/server/alerts/listener');
 	startAlertSystem().catch((e) => console.error('[alerts] Start fehlgeschlagen:', e));
+	const { startUpdateSystem } = await import('$lib/server/updates/scheduler');
+	startUpdateSystem();
 };
 
 export const handle: Handle = async ({ event, resolve }) => {

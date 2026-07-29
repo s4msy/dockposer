@@ -19,7 +19,9 @@
     "bcryptjs": "^3.0.3",
     "otpauth": "^9.5.1",
     "qrcode": "^1.5.4",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "@simplewebauthn/server": "^13.3.2",
+    "@simplewebauthn/browser": "^13.3.0"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.2.0",

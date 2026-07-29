@@ -56,6 +56,31 @@
 		}
 	}
 
+	let passkeyError = $state('');
+	let passkeyBusy = $state(false);
+
+	async function addPasskey() {
+		passkeyBusy = true;
+		passkeyError = '';
+		try {
+			const { startRegistration } = await import('@simplewebauthn/browser');
+			const { challengeId, options } = await (await fetch('/api/webauthn/register')).json();
+			const response = await startRegistration({ optionsJSON: options });
+			const deviceName = prompt('Name für dieses Gerät (z. B. „Pixel 9"):') ?? '';
+			const res = await fetch('/api/webauthn/register', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ challengeId, response, deviceName })
+			});
+			if (!res.ok) throw new Error(await res.text());
+			await invalidateAll();
+		} catch (e) {
+			if (!String(e).includes('NotAllowedError')) passkeyError = `Passkey-Anlage fehlgeschlagen: ${e}`;
+		} finally {
+			passkeyBusy = false;
+		}
+	}
+
 	async function disablePush() {
 		pushState = 'busy';
 		const reg = await navigator.serviceWorker.ready;
@@ -111,6 +136,32 @@
 		<p>Zweiter Faktor für den Login. Dringend empfohlen, bevor Server registriert werden.</p>
 		<form method="POST" action="?/totpStart"><button>TOTP einrichten</button></form>
 	{/if}
+</div>
+
+<div class="card">
+	<strong>Passkeys</strong>
+	<p style="color: var(--color-text-dim);">Anmeldung per Fingerabdruck/Face — ersetzt Passwort und TOTP-Code.</p>
+	{#if passkeyError}<div class="alert-error" role="alert">{passkeyError}</div>{/if}
+
+	{#if data.passkeys.length > 0}
+		<ul style="list-style: none; padding: 0; margin: 0 0 var(--space-2);">
+			{#each data.passkeys as pk (pk.id)}
+				<li style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; border-top: 1px solid var(--color-border);">
+					<span style="flex: 1;">
+						{pk.deviceName}
+						<small style="color: var(--color-text-dim); display: block;">
+							angelegt {new Date(pk.createdAt).toLocaleDateString('de-DE')}{pk.lastUsedAt ? ` · zuletzt ${new Date(pk.lastUsedAt).toLocaleDateString('de-DE')}` : ''}
+						</small>
+					</span>
+					<form method="POST" action="?/removePasskey" use:enhance>
+						<input type="hidden" name="id" value={pk.id} />
+						<button style="width: auto; min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent; color: var(--color-crit); border: 1px solid var(--color-crit);">Entfernen</button>
+					</form>
+				</li>
+			{/each}
+		</ul>
+	{/if}
+	<button onclick={addPasskey} disabled={passkeyBusy}>Passkey hinzufügen</button>
 </div>
 
 <div class="card">

@@ -1,7 +1,32 @@
 <script lang="ts">
 	import type { ActionData } from './$types';
 	import { enhance } from '$app/forms';
+	import { goto } from '$app/navigation';
 	let { form }: { form: ActionData } = $props();
+	let passkeyError = $state('');
+	let passkeyBusy = $state(false);
+
+	async function loginWithPasskey() {
+		passkeyBusy = true;
+		passkeyError = '';
+		try {
+			const { startAuthentication } = await import('@simplewebauthn/browser');
+			const { challengeId, options } = await (await fetch('/api/webauthn/auth')).json();
+			const response = await startAuthentication({ optionsJSON: options });
+			const res = await fetch('/api/webauthn/auth', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ challengeId, response })
+			});
+			if (!res.ok) throw new Error(await res.text());
+			await goto('/', { invalidateAll: true });
+		} catch (e) {
+			// Abbruch durch den User ist kein Fehler
+			if (!String(e).includes('NotAllowedError')) passkeyError = `Passkey-Anmeldung fehlgeschlagen: ${e}`;
+		} finally {
+			passkeyBusy = false;
+		}
+	}
 </script>
 
 <h1>Anmelden</h1>
@@ -26,3 +51,8 @@
 
 	<button type="submit">Anmelden</button>
 </form>
+
+{#if passkeyError}<div class="alert-error" role="alert">{passkeyError}</div>{/if}
+<button onclick={loginWithPasskey} disabled={passkeyBusy} style="background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);">
+	🔑 Mit Passkey anmelden
+</button>

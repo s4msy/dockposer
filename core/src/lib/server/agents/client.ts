@@ -133,3 +133,8 @@ export interface AgentImage {
 
 export const fetchImages = (baseUrl: string, token: string, stack: string) =>
 	agentFetch<AgentImage[]>(baseUrl, token, `/v1/stacks/${encodeURIComponent(stack)}/images`, {}, 30_000);
+
+export const deleteStack = (baseUrl: string, token: string, stack: string) =>
+	agentFetch<{ deleted: boolean; name: string }>(baseUrl, token, `/v1/stacks/${encodeURIComponent(stack)}`, {
+		method: 'DELETE'
+	}, 90_000);

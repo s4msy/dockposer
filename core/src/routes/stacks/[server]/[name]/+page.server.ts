@@ -5,8 +5,9 @@ import { servers, stacks } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
 import { decrypt } from '$lib/server/crypto';
-import { fetchCompose, fetchStackPs, putCompose, AgentError } from '$lib/server/agents/client';
+import { fetchCompose, fetchStackPs, putCompose, deleteStack, AgentError } from '$lib/server/agents/client';
 import { checkStackUpdates } from '$lib/server/updates/checker';
+import { redirect } from '@sveltejs/kit';
 
 async function loadServer(serverId: string) {
 	const [server] = await db.select().from(servers).where(eq(servers.id, Number(serverId)));
@@ -104,6 +105,30 @@ export const actions: Actions = {
 			// 422 = Agent hat die Datei abgelehnt (compose config invalide)
 			return fail(422, { saveError: msg });
 		}
+	},
+
+	deleteStack: async ({ locals, params, request }) => {
+		requireUser(locals);
+		const server = await loadServer(params.server);
+		// Doppelte Bestätigung: Name muss exakt getippt werden
+		const confirmName = String((await request.formData()).get('confirmName') ?? '').trim();
+		if (confirmName !== params.name) {
+			return fail(400, { deleteError: 'Zur Bestätigung den Stack-Namen exakt eingeben.' });
+		}
+		// Live prüfen, dass wirklich nichts läuft (Cache könnte veraltet sein)
+		try {
+			const containers = await fetchStackPs(server.baseUrl, decrypt(server.agentTokenEnc), params.name);
+			if (containers.some((c) => c.State === 'running' || c.State === 'restarting')) {
+				return fail(409, { deleteError: 'Stack läuft noch — erst „down", dann löschen.' });
+			}
+			await deleteStack(server.baseUrl, decrypt(server.agentTokenEnc), params.name);
+		} catch (e) {
+			const msg = e instanceof AgentError ? e.message : 'Löschen fehlgeschlagen';
+			return fail(502, { deleteError: msg });
+		}
+		// Cache-Eintrag entfernen, damit die Übersicht sofort stimmt
+		await db.delete(stacks).where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
+		redirect(303, '/');
 	},
 
 	toggleGit: async ({ locals, params }) => {

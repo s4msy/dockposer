@@ -25,6 +25,11 @@
 	let outputEl = $state<HTMLElement | null>(null);
 	let containers = $state(data.containers);
 	let sshCopied = $state(false);
+	let showDanger = $state(false);
+	let confirmName = $state('');
+	const stackStopped = $derived(
+		containers.length === 0 || !containers.some((c) => c.State === 'running' || c.State === 'restarting')
+	);
 	let stats = $state<Record<string, { cpu: string; mem: string }>>({});
 
 	// Live-Polling: ps + stats alle 5s, solange die Seite offen ist
@@ -336,3 +341,31 @@
 		</form>
 	</div>
 {/if}
+
+<div class="card" style="margin-top: var(--space-6); border-color: var(--color-border);">
+	{#if !showDanger}
+		<button
+			onclick={() => (showDanger = true)}
+			style="background: transparent; color: var(--color-text-dim); border: 1px dashed var(--color-border);"
+		>Stack löschen …</button>
+	{:else}
+		<strong style="color: var(--color-crit);">Stack löschen</strong>
+		{#if !stackStopped}
+			<p style="color: var(--color-text-dim);">Nur möglich, wenn der Stack gestoppt ist. Erst „down" ausführen.</p>
+		{:else}
+			<p style="color: var(--color-text-dim);">
+				Entfernt den Ordner <code>{data.name}</code> auf dem Server. <strong>Volumes bleiben erhalten</strong> (per SSH aufräumen, falls gewünscht).
+			</p>
+			{#if form?.deleteError}<div class="alert-error" role="alert">{form.deleteError}</div>{/if}
+			<form method="POST" action="?/deleteStack" use:enhance>
+				<label for="confirmName">Zur Bestätigung „{data.name}" eingeben</label>
+				<input id="confirmName" name="confirmName" bind:value={confirmName} autocomplete="off" placeholder={data.name} />
+				<button
+					disabled={confirmName !== data.name}
+					style="background: var(--color-crit);"
+				>Unwiderruflich löschen</button>
+			</form>
+		{/if}
+		<button onclick={() => (showDanger = false)} style="background: transparent; color: var(--color-text-dim); border: none; margin-top: var(--space-2);">Abbrechen</button>
+	{/if}
+</div>

@@ -66,6 +66,7 @@ func main() {
 	mux.HandleFunc("GET /v1/stacks/{name}/images", handleStackImages)
 	mux.HandleFunc("POST /v1/stacks/{name}/update", handleUpdate)
 	mux.HandleFunc("PUT /v1/stacks/{name}/compose", handleComposePut)
+	mux.HandleFunc("DELETE /v1/stacks/{name}", handleStackDelete)
 	mux.HandleFunc("POST /v1/stacks/{name}/up", action("up", "-d"))
 	mux.HandleFunc("POST /v1/stacks/{name}/down", action("down"))
 	mux.HandleFunc("POST /v1/stacks/{name}/pull", action("pull"))
@@ -253,6 +254,41 @@ func handleStackCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"name": req.Name, "hash": hashComposeFiles(dir)})
+}
+
+// handleStackDelete: Stack-Ordner entfernen. Voraussetzung: kein Container läuft.
+// Volumes bleiben unangetastet — deren Löschung ist die gefährlichste Operation
+// und bleibt der CLI vorbehalten. Der Core prüft „down" zusätzlich; hier ist die
+// serverseitige Absicherung, damit kein laufender Stack unter den Füßen wegbricht.
+func handleStackDelete(w http.ResponseWriter, r *http.Request) {
+	dir, ok := stackDir(w, r)
+	if !ok {
+		return
+	}
+	rows, err := composePs(r.Context(), dir)
+	if err == nil {
+		for _, row := range rows {
+			if row.State == "running" || row.State == "restarting" {
+				httpErr(w, 409, "Stack läuft noch — erst \"down\", dann löschen")
+				return
+			}
+		}
+	}
+	// Sicherheitshalber down (räumt gestoppte Container/Netzwerke des Projekts weg),
+	// Volumes bleiben (kein -v). Ein Fehler hier ist unkritisch — der Ordner geht trotzdem.
+	run(r.Context(), dir, 60*time.Second, "docker", "compose", "down")
+
+	// Ziel muss innerhalb des Stacks-Pfads liegen — Schutz vor Symlink-Tricks
+	abs, absErr := filepath.Abs(dir)
+	if absErr != nil || !strings.HasPrefix(abs+string(filepath.Separator), stacksDir+string(filepath.Separator)) {
+		httpErr(w, 400, "ungültiger Pfad")
+		return
+	}
+	if err := os.RemoveAll(abs); err != nil {
+		httpErr(w, 500, "Ordner nicht löschbar: "+err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"deleted": true, "name": r.PathValue("name")})
 }
 
 func handleComposeGet(w http.ResponseWriter, r *http.Request) {

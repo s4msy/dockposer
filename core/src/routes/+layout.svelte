@@ -3,6 +3,12 @@
 	import { page } from '$app/state';
 	let { children } = $props();
 	const showNav = $derived(!['/login', '/setup'].includes(page.url.pathname));
+
+	$effect(() => {
+		if ('serviceWorker' in navigator) {
+			navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('SW-Registrierung:', e));
+		}
+	});
 </script>
 
 <main>

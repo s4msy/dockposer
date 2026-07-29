@@ -6,10 +6,20 @@ import { users } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
 import { generateTotpSecret, verifyTotp, verifyPassword } from '$lib/server/auth';
+import { pushSubscriptions } from '$lib/server/db/schema';
+import { and } from 'drizzle-orm';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = requireUser(locals);
-	return { username: user.username, totpEnabled: user.totpEnabled };
+	const { vapidPublicKey } = await import('$lib/server/push/vapid');
+	const subs = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, user.id));
+	return {
+		username: user.username,
+		totpEnabled: user.totpEnabled,
+		vapidPublicKey,
+		webpushCount: subs.filter((s) => s.transport === 'webpush').length,
+		ntfyTopic: subs.find((s) => s.transport === 'ntfy')?.ntfyTopic ?? ''
+	};
 };
 
 export const actions: Actions = {
@@ -31,6 +41,23 @@ export const actions: Actions = {
 		await db.update(users).set({ totpEnabled: true }).where(eq(users.id, user.id));
 		return { totpDone: true };
 	},
+	// ntfy-Fallback: eine Topic-URL pro User
+	saveNtfy: async ({ locals, request }) => {
+		const user = requireUser(locals);
+		const topic = String((await request.formData()).get('ntfyTopic') ?? '').trim();
+		await db.delete(pushSubscriptions).where(and(
+			eq(pushSubscriptions.userId, user.id),
+			eq(pushSubscriptions.transport, 'ntfy')
+		));
+		if (topic) {
+			if (!/^https:\/\/.+\/.+/.test(topic)) {
+				return fail(400, { ntfyError: 'Vollständige Topic-URL angeben, z. B. https://ntfy.sh/mein-topic' });
+			}
+			await db.insert(pushSubscriptions).values({ userId: user.id, transport: 'ntfy', ntfyTopic: topic });
+		}
+		return { ntfySaved: true };
+	},
+
 	// Deaktivieren nur mit Passwort
 	totpDisable: async ({ locals, request }) => {
 		const user = requireUser(locals);

@@ -104,6 +104,8 @@ async function serverRefreshLoop() {
 
 export async function startAlertSystem() {
 	await engine.ensureDefaultRules();
+	const { initPushDispatcher } = await import('$lib/server/push/dispatch');
+	initPushDispatcher();
 	const all = await db.select({ id: servers.id }).from(servers);
 	for (const { id } of all) {
 		listenLoop(id).catch((e) => console.error('[alerts] Loop-Fehler:', e));

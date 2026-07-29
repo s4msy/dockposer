@@ -285,6 +285,11 @@ func handleStackDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := os.RemoveAll(abs); err != nil {
+		if os.IsPermission(err) {
+			httpErr(w, 500, "Ordner nicht löschbar (Rechte): Teile gehören vermutlich root. "+
+				"Der Agent-User braucht Schreibrechte im Stack-Ordner. Details: "+err.Error())
+			return
+		}
 		httpErr(w, 500, "Ordner nicht löschbar: "+err.Error())
 		return
 	}

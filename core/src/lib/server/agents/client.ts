@@ -60,12 +60,20 @@ export interface AgentCompose {
 export const fetchCompose = (baseUrl: string, token: string, stack: string) =>
 	agentFetch<AgentCompose>(baseUrl, token, `/v1/stacks/${encodeURIComponent(stack)}/compose`);
 
-export async function putCompose(baseUrl: string, token: string, stack: string, content: string) {
-	return agentFetch<{ hash: string }>(baseUrl, token, `/v1/stacks/${encodeURIComponent(stack)}/compose`, {
-		method: 'PUT',
-		body: content,
-		headers: { 'Content-Type': 'application/yaml' }
-	});
+export async function putCompose(
+	baseUrl: string,
+	token: string,
+	stack: string,
+	content: string,
+	git?: { message: string }
+) {
+	const query = git ? `?git=1&message=${encodeURIComponent(git.message)}` : '';
+	return agentFetch<{ hash: string; committed?: boolean; git_error?: string }>(
+		baseUrl,
+		token,
+		`/v1/stacks/${encodeURIComponent(stack)}/compose${query}`,
+		{ method: 'PUT', body: content, headers: { 'Content-Type': 'application/yaml' } }
+	);
 }
 
 export interface AgentContainer {

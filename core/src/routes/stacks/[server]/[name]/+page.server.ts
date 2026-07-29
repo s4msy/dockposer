@@ -37,6 +37,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			updates: stack?.updatesJson ? JSON.parse(stack.updatesJson) : [],
 			lastUpdateCheck: stack?.lastUpdateCheck ?? null,
 			updatePolicy: stack?.updatePolicy ?? 'manual',
+			gitTracking: stack?.gitTracking ?? false,
 			agentOffline: false
 		};
 	} catch (e) {
@@ -51,6 +52,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			updates: stack?.updatesJson ? JSON.parse(stack.updatesJson) : [],
 			lastUpdateCheck: stack?.lastUpdateCheck ?? null,
 			updatePolicy: stack?.updatePolicy ?? 'manual',
+			gitTracking: stack?.gitTracking ?? false,
 			agentOffline: true
 		};
 	}
@@ -80,17 +82,41 @@ export const actions: Actions = {
 	},
 
 	saveCompose: async ({ locals, params, request }) => {
-		requireUser(locals);
+		const user = requireUser(locals);
 		const server = await loadServer(params.server);
 		const content = String((await request.formData()).get('content') ?? '');
 		if (!content.trim()) return fail(400, { saveError: 'Leere Datei speichere ich nicht.' });
+		const [stackRow] = await db
+			.select({ gitTracking: stacks.gitTracking })
+			.from(stacks)
+			.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
 		try {
-			const res = await putCompose(server.baseUrl, decrypt(server.agentTokenEnc), params.name, content);
-			return { saved: true, hash: res.hash };
+			const res = await putCompose(
+				server.baseUrl,
+				decrypt(server.agentTokenEnc),
+				params.name,
+				content,
+				stackRow?.gitTracking ? { message: `compose geändert via Dockposer (${user.username})` } : undefined
+			);
+			return { saved: true, hash: res.hash, committed: res.committed ?? false, gitError: res.git_error ?? null };
 		} catch (e) {
 			const msg = e instanceof AgentError ? e.message : 'Unbekannter Fehler';
 			// 422 = Agent hat die Datei abgelehnt (compose config invalide)
 			return fail(422, { saveError: msg });
 		}
+	},
+
+	toggleGit: async ({ locals, params }) => {
+		requireUser(locals);
+		const server = await loadServer(params.server);
+		const [row] = await db
+			.select({ gitTracking: stacks.gitTracking })
+			.from(stacks)
+			.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
+		await db
+			.update(stacks)
+			.set({ gitTracking: !row?.gitTracking })
+			.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
+		return { gitToggled: true };
 	}
 };

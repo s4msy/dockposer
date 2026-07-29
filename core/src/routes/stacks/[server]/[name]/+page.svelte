@@ -24,6 +24,7 @@
 	let editorContent = $state(data.compose?.content ?? '');
 	let outputEl = $state<HTMLElement | null>(null);
 	let containers = $state(data.containers);
+	let sshCopied = $state(false);
 	let stats = $state<Record<string, { cpu: string; mem: string }>>({});
 
 	// Live-Polling: ps + stats alle 5s, solange die Seite offen ist
@@ -182,6 +183,19 @@
 	<a href="/">← Übersicht</a>
 	{#if data.server.sshUrl}
 		<a href={data.server.sshUrl} style="margin-left: auto;">Terminal öffnen ↗</a>
+		<button
+			style="width: auto; min-height: 0; padding: 0 var(--space-2); background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary); font-size: 0.8rem;"
+			title="SSH-Kommando kopieren (falls der Browser den User aus dem Link entfernt)"
+			onclick={() => {
+				// ssh://user@host:2222 → „ssh -p 2222 user@host"
+				const rest = data.server.sshUrl!.slice(6);
+				const m = rest.match(/^(.*?)(?::(\d{1,5}))?$/);
+				const cmd = m?.[2] ? `ssh -p ${m[2]} ${m[1]}` : `ssh ${rest}`;
+				navigator.clipboard.writeText(cmd);
+				sshCopied = true;
+				setTimeout(() => (sshCopied = false), 2000);
+			}}
+		>{sshCopied ? '✓ kopiert' : '⧉'}</button>
 	{/if}
 </p>
 
@@ -295,8 +309,20 @@
 			</small>
 		{/if}
 
+		<form method="POST" action="?/toggleGit" use:enhance style="margin: var(--space-2) 0; display: flex; align-items: center; gap: var(--space-2);">
+			<button style="width: auto; min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent; color: {data.gitTracking ? 'var(--color-ok)' : 'var(--color-text-dim)'}; border: 1px solid currentColor;">
+				{data.gitTracking ? '✓ Git-Tracking an' : 'Git-Tracking aus'}
+			</button>
+			<small style="color: var(--color-text-dim);">Jede Änderung wird als Commit im Stack-Ordner protokolliert. Push, wenn dort ein origin-Remote eingerichtet ist.</small>
+		</form>
+
 		{#if form?.saveError}<div class="alert-error" role="alert" style="margin-top: var(--space-2);">{form.saveError}</div>{/if}
-		{#if form?.saved}<p role="status" style="color: var(--color-ok);">Gespeichert. „up -d" zum Anwenden.</p>{/if}
+		{#if form?.saved}
+			<p role="status" style="color: var(--color-ok);">
+				Gespeichert{form.committed ? ' & committed' : ''}. „up -d" zum Anwenden.
+				{#if form.gitError}<span style="color: var(--color-warn);"> Git-Hinweis: {form.gitError}</span>{/if}
+			</p>
+		{/if}
 
 		<form method="POST" action="?/saveCompose" use:enhance={() => async ({ update }) => update({ reset: false })}>
 			<textarea

@@ -349,7 +349,19 @@ func handleComposePut(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, map[string]any{"hash": hashComposeFiles(dir)})
+	resp := map[string]any{"hash": hashComposeFiles(dir)}
+	if r.URL.Query().Get("git") == "1" {
+		msg := r.URL.Query().Get("message")
+		if msg == "" {
+			msg = "compose über Dockposer geändert"
+		}
+		committed, gitErr := gitCommit(r.Context(), dir, msg)
+		resp["committed"] = committed
+		if gitErr != nil {
+			resp["git_error"] = gitErr.Error()
+		}
+	}
+	writeJSON(w, resp)
 }
 
 // action: compose-Kommando ausführen, Ausgabe als SSE streamen.

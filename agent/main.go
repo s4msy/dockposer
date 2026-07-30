@@ -432,6 +432,16 @@ func action(args ...string) http.HandlerFunc {
 // handleEvents: gefilterte docker events als Endlos-SSE-Stream — die Quelle
 // der Alert-Pipeline im Core. Kein Timeout; Client-Disconnect beendet den Prozess.
 func handleEvents(w http.ResponseWriter, r *http.Request) {
+	f, ok := w.(http.Flusher)
+	if !ok {
+		httpErr(w, 500, "Streaming nicht unterstützt")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(200)
+
 	cmd := exec.CommandContext(r.Context(), "docker", "events",
 		"--format", "{{json .}}",
 		"--filter", "type=container",
@@ -440,7 +450,55 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 		"--filter", "event=health_status",
 		"--filter", "event=restart",
 		"--filter", "event=start")
-	streamSSE(w, cmd)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err)
+		f.Flush()
+		return
+	}
+	cmd.Stderr = cmd.Stdout
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err)
+		f.Flush()
+		return
+	}
+
+	// Event-Zeilen über einen Channel einsammeln, damit der Heartbeat-Ticker
+	// unabhängig davon feuern kann, ob gerade Docker-Events fließen.
+	lines := make(chan string, 16)
+	go func() {
+		defer close(lines)
+		sc := bufio.NewScanner(stdout)
+		sc.Buffer(make([]byte, 64*1024), 1024*1024)
+		for sc.Scan() {
+			lines <- sc.Text()
+		}
+	}()
+
+	heartbeat := time.NewTicker(20 * time.Second)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			cmd.Process.Kill()
+			return
+		case line, ok := <-lines:
+			if !ok {
+				cmd.Wait()
+				fmt.Fprintf(w, "event: exit\ndata: 0\n\n")
+				f.Flush()
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", line)
+			f.Flush()
+		case <-heartbeat.C:
+			// SSE-Kommentarzeile: hält die Verbindung offen, ist kein Event
+			fmt.Fprint(w, ": heartbeat\n\n")
+			f.Flush()
+		}
+	}
 }
 
 func handleLogs(w http.ResponseWriter, r *http.Request) {

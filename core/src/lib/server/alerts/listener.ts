@@ -10,7 +10,6 @@ import { engine, type DockerEvent } from './engine';
 
 const RECONNECT_MIN_MS = 5_000;
 const RECONNECT_MAX_MS = 60_000;
-const OFFLINE_AFTER_FAILS = 3;
 const DISK_POLL_MS = 60_000;
 const SERVER_REFRESH_MS = 30_000;
 
@@ -19,6 +18,8 @@ const activeLoops = new Map<number, AbortController>();
 async function listenLoop(serverId: number) {
 	let fails = 0;
 	let backoff = RECONNECT_MIN_MS;
+	let offlineSince = 0; // Zeitpunkt des ersten Fehlversuchs dieser Downtime-Phase
+	const OFFLINE_AFTER_MS = 45_000; // erst nach 45s echter Nichterreichbarkeit alarmieren
 	const abort = new AbortController();
 	activeLoops.set(serverId, abort);
 
@@ -26,10 +27,13 @@ async function listenLoop(serverId: number) {
 		const [server] = await db.select().from(servers).where(eq(servers.id, serverId));
 		if (!server) break; // Server gelöscht → Loop beenden
 
+		let connectedAt = 0;
 		try {
 			const res = await agentStream(server.baseUrl, decrypt(server.agentTokenEnc), '/v1/events', 'GET');
 			// Verbunden: Status pflegen, ggf. Offline-Alert auflösen
+			connectedAt = Date.now();
 			fails = 0;
+			offlineSince = 0;
 			backoff = RECONNECT_MIN_MS;
 			await db.update(servers).set({ status: 'online', lastSeenAt: new Date() }).where(eq(servers.id, serverId));
 			await engine.agentOnline(serverId);
@@ -46,7 +50,7 @@ async function listenLoop(serverId: number) {
 				buf = parts.pop() ?? '';
 				for (const part of parts) {
 					for (const line of part.split('\n')) {
-						if (!line.startsWith('data: ')) continue;
+						if (!line.startsWith('data: ')) continue; // ": heartbeat"-Kommentarzeilen ignorieren
 						try {
 							const evt = JSON.parse(line.slice(6)) as DockerEvent;
 							await engine.handleEvent(serverId, evt);
@@ -56,12 +60,20 @@ async function listenLoop(serverId: number) {
 					}
 				}
 			}
+			// Sauberes Stream-Ende nach längerer Verbindung ist normal (Reconnect ohne Alarm).
+			// Nur wenn die Verbindung sofort wieder abreißt, als Fehlversuch werten.
+			if (Date.now() - connectedAt < 2_000) throw new Error('stream endete sofort');
 		} catch {
+			if (offlineSince === 0) offlineSince = Date.now();
 			fails++;
-			if (fails === OFFLINE_AFTER_FAILS) {
-				await db.update(servers).set({ status: 'offline' }).where(eq(servers.id, serverId));
-				await engine.agentOffline(serverId, server.name);
-				console.warn(`[alerts] Agent offline: ${server.name}`);
+			// Alarm erst, wenn die Downtime wirklich anhält — nicht beim ersten Zucken
+			if (offlineSince > 0 && Date.now() - offlineSince >= OFFLINE_AFTER_MS) {
+				const [current] = await db.select({ status: servers.status }).from(servers).where(eq(servers.id, serverId));
+				if (current && current.status !== 'offline') {
+					await db.update(servers).set({ status: 'offline' }).where(eq(servers.id, serverId));
+					await engine.agentOffline(serverId, server.name);
+					console.warn(`[alerts] Agent offline: ${server.name} (seit ${Math.round((Date.now() - offlineSince) / 1000)}s)`);
+				}
 			}
 		}
 		if (abort.signal.aborted) break;

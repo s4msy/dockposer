@@ -22,6 +22,13 @@
       "when": 1785303862578,
       "tag": "0002_stack_updates",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1785402367943,
+      "tag": "0003_git_remote",
+      "breakpoints": true
     }
   ]
 }

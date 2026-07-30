@@ -67,6 +67,8 @@ func main() {
 	mux.HandleFunc("POST /v1/stacks/{name}/update", handleUpdate)
 	mux.HandleFunc("PUT /v1/stacks/{name}/compose", handleComposePut)
 	mux.HandleFunc("DELETE /v1/stacks/{name}", handleStackDelete)
+	mux.HandleFunc("GET /v1/git/status", handleGitStatus)
+	mux.HandleFunc("POST /v1/git/init", handleGitInit)
 	mux.HandleFunc("POST /v1/stacks/{name}/up", action("up", "-d"))
 	mux.HandleFunc("POST /v1/stacks/{name}/down", action("down"))
 	mux.HandleFunc("POST /v1/stacks/{name}/pull", action("pull"))
@@ -396,7 +398,7 @@ func handleComposePut(w http.ResponseWriter, r *http.Request) {
 		if msg == "" {
 			msg = "compose über Dockposer geändert"
 		}
-		committed, gitErr := gitCommit(r.Context(), dir, msg)
+		committed, gitErr := gitCommitStack(r.Context(), r.PathValue("name"), msg)
 		resp["committed"] = committed
 		if gitErr != nil {
 			resp["git_error"] = gitErr.Error()

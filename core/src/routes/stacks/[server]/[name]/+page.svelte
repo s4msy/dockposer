@@ -318,7 +318,7 @@
 			<button style="width: auto; min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent; color: {data.gitTracking ? 'var(--color-ok)' : 'var(--color-text-dim)'}; border: 1px solid currentColor;">
 				{data.gitTracking ? '✓ Git-Tracking an' : 'Git-Tracking aus'}
 			</button>
-			<small style="color: var(--color-text-dim);">Jede Änderung wird als Commit im Stack-Ordner protokolliert. Push, wenn dort ein origin-Remote eingerichtet ist.</small>
+			<small style="color: var(--color-text-dim);">Jede Änderung wird als Commit im Stacks-Repo protokolliert (<a href="/settings/git">einrichten</a>). Volumes und <code>.env</code> bleiben ausgeschlossen.</small>
 		</form>
 
 		{#if form?.saveError}<div class="alert-error" role="alert" style="margin-top: var(--space-2);">{form.saveError}</div>{/if}

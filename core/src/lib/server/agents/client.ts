@@ -138,3 +138,29 @@ export const deleteStack = (baseUrl: string, token: string, stack: string) =>
 	agentFetch<{ deleted: boolean; name: string }>(baseUrl, token, `/v1/stacks/${encodeURIComponent(stack)}`, {
 		method: 'DELETE'
 	}, 90_000);
+
+export interface AgentGitStatus {
+	git_installed: boolean;
+	is_repo: boolean;
+	remote?: string;
+	branch?: string;
+	last_commit?: string;
+	dirty_files?: number;
+	gitignore?: string;
+}
+
+export const fetchGitStatus = (baseUrl: string, token: string) =>
+	agentFetch<AgentGitStatus>(baseUrl, token, '/v1/git/status', {}, 15_000);
+
+export const initGit = (
+	baseUrl: string,
+	token: string,
+	body: { remote?: string; write_gitignore?: boolean; overwrite_gitignore?: boolean }
+) =>
+	agentFetch<{ repo_created: boolean; gitignore_written: boolean; gitignore_existed: boolean }>(
+		baseUrl,
+		token,
+		'/v1/git/init',
+		{ method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } },
+		20_000
+	);

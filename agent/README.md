@@ -74,3 +74,80 @@ Kommt das JSON mit `version`, `docker_version`, `disk` zurück, wird auch der �
 ## Manuelle Installation (ohne Installer)
 
 Binary nach `/usr/local/bin/dockposer-agent`, `/etc/dockposer-agent.env` anlegen (Vorlage: `agent.env.example`), systemd-Unit aus `dockposer-agent.service` nach `/etc/systemd/system/` (User + `ReadWritePaths` anpassen), dann `systemctl enable --now dockposer-agent`.
+
+## Git-Backend (optional)
+
+Dockposer versioniert Compose-Dateien **nach** Git — es deployed nie *aus* Git. Kein GitOps-Zwang, nur Audit-Log und Undo.
+
+**Modell:** Ein Repo pro Server, angelegt im **Stacks-Wurzelordner** (nicht pro Stack). Einrichten unter *Einstellungen → Git-Backend*, aktivieren pro Stack in der Stack-Detailseite. Voraussetzung: `git` ist auf dem Server installiert (`sudo dnf install git`).
+
+### Die Tiefenregel — wichtig!
+
+Stack-Ordner enthalten oft komplette Volumes (`./data`, `./postgres`, Caches). Die von Dockposer angelegte `.gitignore` versioniert deshalb **nur Dateien direkt in den Stack-Ordnern**:
+
+```gitignore
+/*/*/          # alle Unterordner der Stack-Ordner ignorieren (= Volumes)
+.env
+.env.*
+*.env
+.dockposer-rollback.yaml
+```
+
+Ergebnis bei `stacks/immich/compose.yaml` + `stacks/immich/data/postgres.db`: die compose-Datei ist versioniert, das Datenverzeichnis nicht. Auch `Caddyfile` o. Ä. direkt im Stack-Ordner kommt mit.
+
+Soll ein Unterordner doch versioniert werden, unten in der `.gitignore` ausnehmen:
+
+```gitignore
+!/meinstack/config/
+```
+
+### Push zu Forgejo
+
+Push-Ziel unter *Einstellungen → Git-Backend* eintragen. **Dockposer verwaltet keine Git-Credentials:**
+
+- `git@host:user/repo.git` → SSH-Deploy-Key muss auf dem Server für den Agent-User liegen (`~/.ssh/`)
+- `https://user:token@host/user/repo.git` → das Remote wird AES-verschlüsselt in der Dockposer-DB gespeichert
+
+Das Repo muss in Forgejo **bereits existieren** — Dockposer legt keine Remote-Repos an. Push läuft asynchron und best-effort: Schlägt er fehl, blockiert das nie das Speichern; der Fehler landet im Agent-Log (`journalctl -u dockposer-agent`).
+
+### Bestehendes Repo migrieren
+
+Ist der Stacks-Ordner schon ein Repo, lässt Dockposer es unangetastet: Die Einrichtung erkennt es, und eine vorhandene `.gitignore` wird **nicht** überschrieben (es sei denn, man setzt das Häkchen explizit). Prüfen, ob die Tiefenregel enthalten ist — andernfalls die Zeile `/*/*/` ergänzen, sonst landen Volumes im Repo.
+
+---
+
+# Troubleshooting
+
+## „Agent antwortet mit 500" beim Stack-Löschen
+
+**Ursache:** Rechte. Der Agent läuft als unprivilegierter User, aber im Stack-Ordner liegen Unterverzeichnisse, die ein Container als `root` angelegt hat (typisch bei Bind-Mounts wie `./data`). Zum Löschen einer Datei zählt unter Linux nicht der Besitz an der Datei, sondern **Schreibrecht am übergeordneten Ordner** — deshalb kann der Agent solche Ordner nicht ausräumen.
+
+**Prüfen:**
+
+```sh
+ls -la ~/stacks/<stackname>/     # Einträge mit "root root"?
+```
+
+**Abhilfe (einmalig pro Stack):**
+
+```sh
+sudo chown -R <agent-user>: ~/stacks/<stackname>
+```
+
+**Dauerhaft:** Im Compose `user:` setzen bzw. Images verwenden, die als Nicht-Root laufen (`PUID`/`PGID` bei LinuxServer.io-Images). Dockposer räumt bewusst **nicht** mit erhöhten Rechten auf — ein Agent, der fremde root-Dateien löschen darf, wäre ein Einfallstor.
+
+## „Could not connect" / „Connection refused" vom Core aus
+
+Kommt der Fehler **sofort** (wenige Millisekunden), ist es die Firewall → siehe Firewall-Abschnitt oben. Läuft es in einen **langen Timeout**, ist es Routing (falsche IP, kein Tunnel zwischen Core und Agent).
+
+## Health-Check des Installers grün, „Testen" in der UI schlägt fehl
+
+Der Agent lauscht auf `127.0.0.1` — der Installer testet lokal, der Core kommt von außen. Siehe `--listen`-Abschnitt oben.
+
+## Update wird nach erfolgreichem Update weiterhin angezeigt
+
+War ein Bug in frühen Versionen (Digest-Vergleich bei Multi-Arch-Images). Agent und Core aktualisieren; der Checker prüft seither die Plattform-Manifeste der Manifestliste gegen.
+
+## „git ist auf diesem Server nicht installiert"
+
+Der Agent-Container (`docker:cli`) enthält git seit Patch 17; bei systemd-Installationen: `sudo dnf install git`.

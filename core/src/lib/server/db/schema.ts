@@ -75,6 +75,7 @@ export const servers = sqliteTable('servers', {
 	status: text('status', { enum: serverStatus }).notNull().default('offline'),
 	stacksPath: text('stacks_path').notNull().default('~/stacks'),
 	sshUrl: text('ssh_url'), // ssh://user@host für den "Terminal öffnen"-Button (M4)
+	gitRemoteEnc: text('git_remote_enc'), // Push-Ziel des Stacks-Repos, AES-verschlüsselt (kann Token enthalten)
 	lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }),
 	createdAt: integer('created_at', { mode: 'timestamp' })
 		.notNull()

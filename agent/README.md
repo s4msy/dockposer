@@ -36,6 +36,22 @@ sudo systemctl restart dockposer-agent
 
 **Hinweis:** In manchen Netz-Konstellationen (z. B. der Core erreicht den Agent über eine LAN-IP, während lokal geroutet wird) funktioniert ein Binding auf `127.0.0.1` nicht zuverlässig für die eigenen Health-Checks. Im Zweifel direkt auf die LAN-/Tunnel-IP binden, unter der auch der Core den Agent anspricht.
 
+## Bearbeitbare Konfigurationsdateien
+
+Neben der compose-Datei kann Dockposer weitere Konfigdateien im Stack-Ordner bearbeiten — welche, bestimmt eine Allowlist pro Agent:
+
+```sh
+DOCKPOSER_EDITABLE_FILES=".env,Caddyfile,*.conf"
+```
+
+Default ist `.env`. Einfache Globs (`*`) sind erlaubt, Pfadanteile nicht — es geht ausschließlich um Dateien **direkt im Stack-Ordner**. Beim Installer: `--editable-files ".env,Caddyfile"`, nachträglich in `/etc/dockposer-agent.env` (danach `systemctl restart dockposer-agent`).
+
+Hintergrund: Compose lädt automatisch nur `.env`. Viele Dienste haben aber eine eigene Konfigurationsdatei daneben (Caddy die `Caddyfile`, andere `config.yaml` o. Ä.), die man beim Bearbeiten des Stacks ohnehin braucht. Statt sie fest zu verdrahten, entscheidest du pro Server, was editierbar ist.
+
+Zwei Sicherheitsdetails: Inhalte werden **nur auf ausdrückliche Anforderung** übertragen, nie beim Stack-Listing. Und `.env`-artige Dateien werden nach dem Schreiben mit `compose config` gegengeprüft — schlägt die Interpolation fehl, wird die Änderung automatisch zurückgerollt. Andere Formate (Caddyfile & Co.) kann Compose nicht validieren; dort gilt: Speichern, Stack neu starten, Ergebnis prüfen.
+
+Committet wird nichts davon nach Git — die Dateien können Secrets enthalten.
+
 ## Firewall (Fedora/RHEL: firewalld)
 
 Fedora blockt den Agent-Port per Default. Symptom: `curl` vom Core aus meldet **sofort** (wenige ms) `Could not connect` / `Connection refused` — ein Routing-Problem liefe dagegen in einen langen Timeout.

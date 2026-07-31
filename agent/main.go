@@ -67,8 +67,9 @@ func main() {
 	mux.HandleFunc("GET /v1/stacks/{name}/images", handleStackImages)
 	mux.HandleFunc("POST /v1/stacks/{name}/update", handleUpdate)
 	mux.HandleFunc("PUT /v1/stacks/{name}/compose", handleComposePut)
-	mux.HandleFunc("GET /v1/stacks/{name}/env", handleEnvGet)
-	mux.HandleFunc("PUT /v1/stacks/{name}/env", handleEnvPut)
+	mux.HandleFunc("GET /v1/stacks/{name}/files", handleFilesList)
+	mux.HandleFunc("GET /v1/stacks/{name}/file", handleFileGet)
+	mux.HandleFunc("PUT /v1/stacks/{name}/file", handleFilePut)
 	mux.HandleFunc("DELETE /v1/stacks/{name}", handleStackDelete)
 	mux.HandleFunc("GET /v1/git/status", handleGitStatus)
 	mux.HandleFunc("POST /v1/git/init", handleGitInit)
@@ -79,7 +80,9 @@ func main() {
 	mux.HandleFunc("GET /v1/events", handleEvents)
 	mux.HandleFunc("GET /v1/containers/{id}/logs", handleLogs)
 
-	log.Printf("dockposer-agent v%s · stacks=%s · listen=%s", version, stacksDir, listen)
+	initEditableFiles()
+	log.Printf("dockposer-agent v%s · stacks=%s · listen=%s · editierbar=%s",
+		version, stacksDir, listen, strings.Join(editablePatterns, ","))
 	log.Fatal(http.ListenAndServe(listen, auth(mux)))
 }
 

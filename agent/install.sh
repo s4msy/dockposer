@@ -17,6 +17,7 @@ BASE="${DOCKPOSER_BASE:-}"
 TOKEN="${DOCKPOSER_TOKEN:-}"
 STACKS="${DOCKPOSER_STACKS:-}"
 LISTEN="${DOCKPOSER_LISTEN:-127.0.0.1:8720}"
+EDITABLE="${DOCKPOSER_EDITABLE_FILES:-}"
 RUN_USER="${DOCKPOSER_USER:-}"
 BIN_PATH="/usr/local/bin/dockposer-agent"
 ENV_FILE="/etc/dockposer-agent.env"
@@ -33,6 +34,7 @@ while [ $# -gt 0 ]; do
 		--token)  TOKEN="$2"; shift 2 ;;
 		--stacks) STACKS="$2"; shift 2 ;;
 		--listen) LISTEN="$2"; shift 2 ;;
+		--editable-files) EDITABLE="$2"; shift 2 ;;
 		--user)   RUN_USER="$2"; shift 2 ;;
 		*) die "Unbekanntes Argument: $1" ;;
 	esac
@@ -62,7 +64,11 @@ BASE="${BASE%/}"
 existing_token=""
 if [ -f "$ENV_FILE" ]; then
 	existing_token="$(grep '^DOCKPOSER_TOKEN=' "$ENV_FILE" | cut -d= -f2- || true)"
+	if [ -z "$EDITABLE" ]; then
+		EDITABLE="$(grep '^DOCKPOSER_EDITABLE_FILES=' "$ENV_FILE" | cut -d= -f2- || true)"
+	fi
 fi
+[ -n "$EDITABLE" ] || EDITABLE=".env" 
 if [ -z "$TOKEN" ]; then
 	if [ -n "$existing_token" ]; then
 		TOKEN="$existing_token"
@@ -114,6 +120,7 @@ cat > "$ENV_FILE" << ENVEOF
 DOCKPOSER_TOKEN=$TOKEN
 DOCKPOSER_STACKS=$STACKS
 DOCKPOSER_LISTEN=$LISTEN
+DOCKPOSER_EDITABLE_FILES=$EDITABLE
 ENVEOF
 chmod 600 "$ENV_FILE"
 say "→ $ENV_FILE geschrieben (chmod 600)."
@@ -179,3 +186,5 @@ say "       }"
 say "  2. In der Dockposer-UI: Server registrieren mit der HTTPS-URL"
 say "     und exakt diesem Token, dann Testen klicken."
 say "  3. Optional: git installieren, falls Git-Tracking genutzt werden soll."
+say "  4. Bearbeitbare Konfigdateien: $EDITABLE"
+say "     (ändern mit --editable-files \".env,Caddyfile\" oder in $ENV_FILE)"

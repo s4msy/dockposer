@@ -5,7 +5,7 @@ import { servers, stacks } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
 import { decrypt } from '$lib/server/crypto';
-import { fetchCompose, fetchStackPs, putCompose, deleteStack, fetchEnv, putEnv, AgentError } from '$lib/server/agents/client';
+import { fetchCompose, fetchStackPs, putCompose, deleteStack, fetchEditableFiles, fetchFile, putFile, AgentError } from '$lib/server/agents/client';
 import { checkStackUpdates } from '$lib/server/updates/checker';
 import { redirect } from '@sveltejs/kit';
 
@@ -25,9 +25,11 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
 
 	try {
-		const [compose, containers] = await Promise.all([
+		const [compose, containers, editable] = await Promise.all([
 			fetchCompose(server.baseUrl, token, params.name),
-			fetchStackPs(server.baseUrl, token, params.name)
+			fetchStackPs(server.baseUrl, token, params.name),
+			// Alte Agents kennen die Route nicht — dann bleibt der Bereich leer
+			fetchEditableFiles(server.baseUrl, token, params.name).catch(() => ({ files: [], allowed: [] }))
 		]);
 		return {
 			server: { id: server.id, name: server.name, sshUrl: server.sshUrl },
@@ -35,6 +37,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			name: params.name,
 			compose,
 			containers,
+			editableFiles: editable.files,
+			allowedPatterns: editable.allowed,
 			updates: stack?.updatesJson ? JSON.parse(stack.updatesJson) : [],
 			lastUpdateCheck: stack?.lastUpdateCheck ?? null,
 			updatePolicy: stack?.updatePolicy ?? 'manual',
@@ -50,6 +54,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			name: params.name,
 			compose: null,
 			containers: [],
+			editableFiles: [],
+			allowedPatterns: [],
 			updates: stack?.updatesJson ? JSON.parse(stack.updatesJson) : [],
 			lastUpdateCheck: stack?.lastUpdateCheck ?? null,
 			updatePolicy: stack?.updatePolicy ?? 'manual',
@@ -131,30 +137,33 @@ export const actions: Actions = {
 		redirect(303, '/');
 	},
 
-	// .env-Inhalt nur auf ausdrückliche Anforderung laden — nie als Beifang
-	loadEnv: async ({ locals, params }) => {
+	// Datei-Inhalt nur auf ausdrückliche Anforderung laden — nie als Beifang
+	loadFile: async ({ locals, params, request }) => {
 		requireUser(locals);
 		const server = await loadServer(params.server);
+		const fileName = String((await request.formData()).get('fileName') ?? '');
 		try {
-			const res = await fetchEnv(server.baseUrl, decrypt(server.agentTokenEnc), params.name);
-			return { envLoaded: true, envExists: res.exists, envContent: res.content };
+			const res = await fetchFile(server.baseUrl, decrypt(server.agentTokenEnc), params.name, fileName);
+			return { fileLoaded: true, fileName, fileExists: res.exists, fileContent: res.content };
 		} catch (e) {
 			const msg = e instanceof AgentError ? e.message : 'Laden fehlgeschlagen';
-			return fail(502, { envError: msg });
+			return fail(502, { fileError: msg, fileName });
 		}
 	},
 
-	saveEnv: async ({ locals, params, request }) => {
+	saveFile: async ({ locals, params, request }) => {
 		requireUser(locals);
 		const server = await loadServer(params.server);
-		const content = String((await request.formData()).get('envContent') ?? '');
+		const form = await request.formData();
+		const fileName = String(form.get('fileName') ?? '');
+		const content = String(form.get('fileContent') ?? '');
 		try {
-			await putEnv(server.baseUrl, decrypt(server.agentTokenEnc), params.name, content);
-			// Bewusst kein Git-Commit: .env enthält Secrets und ist in der .gitignore
-			return { envSaved: true, envLoaded: true, envExists: true, envContent: content };
+			await putFile(server.baseUrl, decrypt(server.agentTokenEnc), params.name, fileName, content);
+			// Bewusst kein Git-Commit: .env-artige Dateien enthalten Secrets
+			return { fileSaved: true, fileLoaded: true, fileName, fileExists: true, fileContent: content };
 		} catch (e) {
 			const msg = e instanceof AgentError ? e.message : 'Speichern fehlgeschlagen';
-			return fail(422, { envError: msg, envLoaded: true, envExists: true, envContent: content });
+			return fail(422, { fileError: msg, fileLoaded: true, fileName, fileExists: true, fileContent: content });
 		}
 	},
 

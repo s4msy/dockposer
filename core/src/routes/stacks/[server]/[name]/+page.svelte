@@ -349,44 +349,62 @@
 
 	<details class="card" bind:open={envOpen}>
 		<summary style="cursor: pointer; min-height: 44px; display: flex; align-items: center;">
-			<strong>.env bearbeiten</strong>
+			<strong>Konfigurationsdateien</strong>
 		</summary>
 
-		<p style="color: var(--color-text-dim); font-size: 0.85rem;">
-			Bearbeitet wird ausschließlich die Datei mit dem exakten Namen <code>.env</code> — Compose lädt nur
-			diese automatisch. Andere Schreibweisen (<code>.env.local</code>, <code>prod.env</code>) rührt Dockposer
-			nicht an; die pflegst du per SSH.
-			{#if data.compose?.env_files?.length}
-				<br />Im Ordner gefunden: {data.compose.env_files.join(', ')}
-			{/if}
-			<br /><strong>Wird nie nach Git committet</strong> — Secrets bleiben auf dem Server.
-		</p>
-
-		{#if form?.envError}<div class="alert-error" role="alert">{form.envError}</div>{/if}
-		{#if form?.envSaved}<p role="status" style="color: var(--color-ok);">Gespeichert. Neustart des Stacks („up -d") übernimmt die Werte.</p>{/if}
-
-		{#if form?.envLoaded}
-			{#if !form.envExists}
-				<p style="color: var(--color-text-dim);">Noch keine <code>.env</code> vorhanden — Speichern legt sie an.</p>
-			{/if}
-			<form method="POST" action="?/saveEnv" use:enhance={() => async ({ update }) => update({ reset: false })}>
-				<textarea
-					name="envContent"
-					value={form.envContent ?? ''}
-					rows="10"
-					spellcheck="false"
-					autocomplete="off"
-					style="width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-bg); color: var(--color-text); padding: var(--space-3);"
-				></textarea>
-				<button style="margin-top: var(--space-2);" disabled={data.agentOffline}>.env speichern</button>
-			</form>
+		{#if data.editableFiles.length === 0}
+			<p style="color: var(--color-text-dim);">
+				Keine bearbeitbaren Dateien gefunden.
+				{#if data.allowedPatterns.length > 0}
+					Zugelassen auf diesem Server: <code>{data.allowedPatterns.join(', ')}</code>.
+				{/if}
+				<br />Die Liste bestimmt <code>DOCKPOSER_EDITABLE_FILES</code> in der Agent-Konfiguration
+				(z. B. <code>.env,Caddyfile</code>) — Compose lädt automatisch nur <code>.env</code>.
+			</p>
 		{:else}
-			<form method="POST" action="?/loadEnv" use:enhance>
-				<button
-					style="background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);"
-					disabled={data.agentOffline}
-				>Inhalt laden</button>
-			</form>
+			<p style="color: var(--color-text-dim); font-size: 0.85rem;">
+				Zugelassen: <code>{data.allowedPatterns.join(', ')}</code> (Agent-Einstellung
+				<code>DOCKPOSER_EDITABLE_FILES</code>). <strong>Nichts davon wird nach Git committet.</strong>
+			</p>
+
+			{#if form?.fileError}<div class="alert-error" role="alert">{form.fileError}</div>{/if}
+			{#if form?.fileSaved}
+				<p role="status" style="color: var(--color-ok);">
+					<code>{form.fileName}</code> gespeichert. Neustart des Stacks übernimmt die Änderung.
+				</p>
+			{/if}
+
+			<div style="display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3);">
+				{#each data.editableFiles as f (f.name)}
+					<form method="POST" action="?/loadFile" use:enhance style="width: auto;">
+						<input type="hidden" name="fileName" value={f.name} />
+						<button
+							style="width: auto; min-height: 36px; padding: var(--space-1) var(--space-3);
+								background: {form?.fileName === f.name && form?.fileLoaded ? 'var(--color-primary)' : 'transparent'};
+								color: {form?.fileName === f.name && form?.fileLoaded ? 'var(--color-primary-text)' : 'var(--color-primary)'};
+								border: 1px solid var(--color-primary);"
+							disabled={data.agentOffline}
+						>{f.name}{#if f.secrets}&nbsp;🔒{/if}</button>
+					</form>
+				{/each}
+			</div>
+
+			{#if form?.fileLoaded}
+				<form method="POST" action="?/saveFile" use:enhance={() => async ({ update }) => update({ reset: false })}>
+					<input type="hidden" name="fileName" value={form.fileName} />
+					<label for="fileContent"><code>{form.fileName}</code>{#if !form.fileExists} — noch nicht vorhanden, Speichern legt sie an{/if}</label>
+					<textarea
+						id="fileContent"
+						name="fileContent"
+						value={form.fileContent ?? ''}
+						rows="12"
+						spellcheck="false"
+						autocomplete="off"
+						style="width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-bg); color: var(--color-text); padding: var(--space-3);"
+					></textarea>
+					<button style="margin-top: var(--space-2);" disabled={data.agentOffline}>Speichern</button>
+				</form>
+			{/if}
 		{/if}
 	</details>
 {/if}

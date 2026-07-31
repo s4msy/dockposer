@@ -177,18 +177,32 @@ export interface AgentUnmanaged {
 export const fetchUnmanaged = (baseUrl: string, token: string) =>
 	agentFetch<AgentUnmanaged[]>(baseUrl, token, '/v1/unmanaged', {}, 20_000);
 
-export const fetchEnv = (baseUrl: string, token: string, stack: string) =>
-	agentFetch<{ exists: boolean; content: string }>(
+export interface EditableFile {
+	name: string;
+	size: number;
+	secrets: boolean;
+}
+
+/** Bearbeitbare Konfigdateien im Stack-Ordner (Allowlist des Agents). */
+export const fetchEditableFiles = (baseUrl: string, token: string, stack: string) =>
+	agentFetch<{ files: EditableFile[]; allowed: string[] }>(
 		baseUrl,
 		token,
-		`/v1/stacks/${encodeURIComponent(stack)}/env`
+		`/v1/stacks/${encodeURIComponent(stack)}/files`
 	);
 
-export const putEnv = (baseUrl: string, token: string, stack: string, content: string) =>
-	agentFetch<{ saved: boolean; hash: string }>(
+export const fetchFile = (baseUrl: string, token: string, stack: string, name: string) =>
+	agentFetch<{ exists: boolean; content: string; name: string }>(
 		baseUrl,
 		token,
-		`/v1/stacks/${encodeURIComponent(stack)}/env`,
+		`/v1/stacks/${encodeURIComponent(stack)}/file?name=${encodeURIComponent(name)}`
+	);
+
+export const putFile = (baseUrl: string, token: string, stack: string, name: string, content: string) =>
+	agentFetch<{ saved: boolean; name: string }>(
+		baseUrl,
+		token,
+		`/v1/stacks/${encodeURIComponent(stack)}/file?name=${encodeURIComponent(name)}`,
 		{ method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' } },
 		20_000
 	);

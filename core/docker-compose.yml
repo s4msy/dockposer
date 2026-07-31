@@ -30,3 +30,5 @@ services:
       - DOCKPOSER_TOKEN=${LOCAL_AGENT_TOKEN}
       - DOCKPOSER_STACKS=${STACKS_PATH}
       - DOCKPOSER_LISTEN=0.0.0.0:8720
+      # Welche Konfigdateien in Stack-Ordnern bearbeitbar sind (Globs erlaubt)
+      - DOCKPOSER_EDITABLE_FILES=${EDITABLE_FILES:-.env}

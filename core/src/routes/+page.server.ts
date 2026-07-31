@@ -1,13 +1,30 @@
 import type { PageServerLoad } from './$types';
 import { requireUser } from '$lib/server/guards';
 import { db } from '$lib/server/db';
+import { servers } from '$lib/server/db/schema';
 import { syncAll } from '$lib/server/agents/sync';
 import { fetchUnmanaged } from '$lib/server/agents/client';
 import { decrypt } from '$lib/server/crypto';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	requireUser(locals);
-	await syncAll(); // Agents sind localhost/LAN — die paar ms sind ok. Timeout: 5s pro Agent.
+	const serverList = await db.select().from(servers);
+	// Sync und Unmanaged-Abfrage laufen nebeneinander statt nacheinander —
+	// spart bei mehreren Servern eine komplette Roundtrip-Runde.
+	const [, unmanagedPairs] = await Promise.all([
+		syncAll(),
+		Promise.all(
+			serverList.map(async (server) => {
+				try {
+					const list = await fetchUnmanaged(server.baseUrl, decrypt(server.agentTokenEnc));
+					return [server.id, list] as const;
+				} catch {
+					return [server.id, []] as const;
+				}
+			})
+		)
+	]);
+	const unmanaged = Object.fromEntries(unmanagedPairs);
 	const servers = await db.query.servers.findMany({ orderBy: (s, { asc }) => [asc(s.name)] });
 	const stacks = await db.query.stacks.findMany({ orderBy: (s, { asc }) => [asc(s.name)] });
 	const stacksWithMeta = stacks.map((s) => {
@@ -20,19 +37,5 @@ export const load: PageServerLoad = async ({ locals }) => {
 		}
 		return { ...s, updatesCount };
 	});
-	// Nicht erfasste Container je Server — rein informativ, Fehler ignorieren
-	// (alte Agents kennen die Route nicht, offline-Server antworten gar nicht)
-	const unmanaged = Object.fromEntries(
-		await Promise.all(
-			servers.map(async (server) => {
-				try {
-					const list = await fetchUnmanaged(server.baseUrl, decrypt(server.agentTokenEnc));
-					return [server.id, list] as const;
-				} catch {
-					return [server.id, []] as const;
-				}
-			})
-		)
-	);
 	return { servers, stacks: stacksWithMeta, unmanaged };
 };

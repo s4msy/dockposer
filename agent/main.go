@@ -136,6 +136,10 @@ func handleStacks(w http.ResponseWriter, r *http.Request) {
 		httpErr(w, 500, "Stacks-Ordner nicht lesbar: "+err.Error())
 		return
 	}
+	// EIN docker-ps-Aufruf für alle Stacks statt zwei compose-Aufrufe pro Stack.
+	// Bei 40 Stacks spart das ~80 Prozessstarts pro Übersichts-Refresh.
+	live := collectLiveContainers(r.Context())
+
 	result := []stackInfo{}
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -146,68 +150,102 @@ func handleStacks(w http.ResponseWriter, r *http.Request) {
 		if cf == "" {
 			continue
 		}
-		info := stackInfo{Name: e.Name(), Path: dir, ComposeHash: hashComposeFiles(dir), State: "unknown"}
-		fillState(r.Context(), dir, &info)
+		hash := hashComposeFiles(dir)
+		info := stackInfo{Name: e.Name(), Path: dir, ComposeHash: hash, State: "unknown"}
+
+		// Service-Anzahl ist teuer (compose config) und ändert sich nur mit der
+		// Datei → über den Hash cachen.
+		info.ServicesTotal = serviceCount(r.Context(), dir, hash)
+
+		if l, ok := live[dir]; ok {
+			info.ServicesRunning = l.running
+			info.ServicesUnhealthy = l.unhealthy
+			if l.running > info.ServicesTotal {
+				info.ServicesTotal = l.running // Replicas o. Ä. — nie "5/4" anzeigen
+			}
+		}
+		switch {
+		case info.ServicesTotal == 0:
+			info.State = "unknown"
+		case info.ServicesRunning == 0:
+			info.State = "stopped"
+		case info.ServicesRunning < info.ServicesTotal:
+			info.State = "partial"
+		case info.ServicesUnhealthy > 0:
+			info.State = "unhealthy"
+		default:
+			info.State = "running"
+		}
 		result = append(result, info)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	writeJSON(w, result)
 }
 
-// fillState: Services zählen (compose config) und laufende Container zählen (compose ps).
-func fillState(ctx context.Context, dir string, info *stackInfo) {
-	if out, err := run(ctx, dir, 15*time.Second, "docker", "compose", "config", "--services"); err == nil {
-		info.ServicesTotal = len(nonEmptyLines(out))
-	}
-	out, err := run(ctx, dir, 15*time.Second, "docker", "compose", "ps", "--format", "json")
+type liveCounts struct{ running, unhealthy int }
+
+// collectLiveContainers gruppiert alle Compose-Container nach ihrem
+// Arbeitsverzeichnis — das ist exakt der Stack-Ordner.
+func collectLiveContainers(ctx context.Context) map[string]*liveCounts {
+	byDir := map[string]*liveCounts{}
+	out, err := run(ctx, "", 20*time.Second, "docker", "ps",
+		"--filter", "label=com.docker.compose.project",
+		"--format", "{{.Label \"com.docker.compose.project.working_dir\"}}\t{{.State}}\t{{.Status}}")
 	if err != nil {
-		return
+		return byDir
 	}
-	type psRow struct {
-		State  string `json:"State"`
-		Health string `json:"Health"`
-	}
-	rows := []psRow{}
-	// compose gibt je nach Version ein JSON-Array oder Zeilen-JSON aus — beides abfangen
-	trimmed := strings.TrimSpace(out)
-	if strings.HasPrefix(trimmed, "[") {
-		json.Unmarshal([]byte(trimmed), &rows)
-	} else {
-		for _, line := range nonEmptyLines(out) {
-			var row psRow
-			if json.Unmarshal([]byte(line), &row) == nil {
-				rows = append(rows, row)
-			}
+	for _, line := range nonEmptyLines(out) {
+		cols := strings.Split(line, "\t")
+		if len(cols) < 3 || cols[0] == "" {
+			continue
+		}
+		dir := filepath.Clean(cols[0])
+		entry, ok := byDir[dir]
+		if !ok {
+			entry = &liveCounts{}
+			byDir[dir] = entry
+		}
+		if cols[1] == "running" {
+			entry.running++
+		}
+		// docker ps liefert Health nur im Status-Text: "Up 2 hours (unhealthy)"
+		if strings.Contains(cols[2], "(unhealthy)") {
+			entry.unhealthy++
 		}
 	}
-	running, unhealthy := 0, 0
-	for _, r := range rows {
-		if r.State == "running" {
-			running++
-		}
-		if r.Health == "unhealthy" {
-			unhealthy++
-		}
-	}
-	info.ServicesRunning = running
-	info.ServicesUnhealthy = unhealthy
-	switch {
-	case info.ServicesTotal == 0:
-		info.State = "unknown"
-	case running == 0:
-		info.State = "stopped"
-	case running < info.ServicesTotal:
-		info.State = "partial"
-	case unhealthy > 0:
-		// Alles läuft, aber ein Healthcheck schlägt an — nicht als "grün" verkaufen
-		info.State = "unhealthy"
-	default:
-		info.State = "running"
-	}
+	return byDir
 }
 
-// handleStats: Einmal-Snapshot von docker stats für alle laufenden Container.
-// Der Core pollt das; ein Dauerstream lohnt erst, wenn es jemand vermisst.
+// Service-Anzahl je compose-Hash cachen — compose config ist teuer.
+var (
+	serviceCountCache = map[string]int{}
+	serviceCountMu    sync.Mutex
+)
+
+func serviceCount(ctx context.Context, dir, hash string) int {
+	if hash != "" {
+		serviceCountMu.Lock()
+		n, ok := serviceCountCache[hash]
+		serviceCountMu.Unlock()
+		if ok {
+			return n
+		}
+	}
+	count := 0
+	if out, err := run(ctx, dir, 15*time.Second, "docker", "compose", "config", "--services"); err == nil {
+		count = len(nonEmptyLines(out))
+	}
+	if hash != "" && count > 0 {
+		serviceCountMu.Lock()
+		if len(serviceCountCache) > 500 {
+			serviceCountCache = map[string]int{} // simpler Deckel gegen unbegrenztes Wachstum
+		}
+		serviceCountCache[hash] = count
+		serviceCountMu.Unlock()
+	}
+	return count
+}
+
 func handleStats(w http.ResponseWriter, r *http.Request) {
 	out, err := run(r.Context(), "", 20*time.Second, "docker", "stats", "--no-stream", "--format", "json")
 	if err != nil {

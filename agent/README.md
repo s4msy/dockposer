@@ -151,3 +151,29 @@ War ein Bug in frühen Versionen (Digest-Vergleich bei Multi-Arch-Images). Agent
 ## „git ist auf diesem Server nicht installiert"
 
 Der Agent-Container (`docker:cli`) enthält git seit Patch 17; bei systemd-Installationen: `sudo dnf install git`.
+
+## Container außerhalb des Stacks-Ordners
+
+Die Übersicht zeigt pro Server, wie viele **laufende Container nicht zu einem Stack im Stacks-Pfad gehören** — aufklappbar mit Name, Image und (bei Compose-Stacks) dem Ordner, aus dem sie gestartet wurden. Das ist rein informativ: Dockposer verwaltet sie nicht, macht sie nur sichtbar.
+
+Zwei Sorten werden unterschieden:
+
+- **Stack außerhalb des Pfads** — hat Compose-Labels, aber sein `working_dir` liegt woanders (z. B. `/opt/foo`). Der angezeigte Pfad sagt dir, wo die compose-Datei liegt.
+- **Einzeln gestartet** — per `docker run` ohne Compose, hat gar keine Projekt-Labels.
+
+Aufnehmen: compose-Datei samt Konfiguration in den Stacks-Pfad verschieben, dort `docker compose up -d` — danach taucht der Stack normal in Dockposer auf. Der Container-Neustart ist dabei unvermeidbar, weil Compose die Projektzuordnung am Arbeitsverzeichnis festmacht.
+
+## Stack-Ordner auf einen Nicht-Root-User umstellen
+
+Damit Dockposer compose-Dateien schreiben und Stacks löschen kann, sollten die Stack-Ordner dem Agent-User gehören. **Nicht rekursiv umstellen** — in den Unterordnern liegen Volumes, und Container laufen mit eigenen UIDs (Postgres z. B. 999). Ein `chown -R` kann Datenbanken lahmlegen.
+
+Sicher ist die nicht-rekursive Variante:
+
+```sh
+cd ~/stacks
+sudo chown <user>:<user> */                          # nur die Stack-Ordner
+sudo chown <user>:<user> */*.yaml */*.yml 2>/dev/null # compose-Dateien
+sudo chown <user>:<user> */.env 2>/dev/null
+```
+
+Das genügt für Editieren, Anlegen und Git-Tracking. Nur zum **Löschen** eines Stacks ist ein rekursives `chown` nötig — das gezielt für den einen Stack ausführen, direkt bevor er weggeworfen wird.

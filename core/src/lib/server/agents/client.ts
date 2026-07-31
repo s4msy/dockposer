@@ -164,3 +164,14 @@ export const initGit = (
 		{ method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } },
 		20_000
 	);
+
+export interface AgentUnmanaged {
+	name: string;
+	image: string;
+	project?: string;
+	working_dir?: string;
+	kind: 'external_stack' | 'standalone';
+}
+
+export const fetchUnmanaged = (baseUrl: string, token: string) =>
+	agentFetch<AgentUnmanaged[]>(baseUrl, token, '/v1/unmanaged', {}, 20_000);

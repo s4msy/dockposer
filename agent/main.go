@@ -31,7 +31,7 @@ import (
 	"time"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 var (
 	token      string
@@ -61,6 +61,7 @@ func main() {
 	mux.HandleFunc("GET /v1/stacks", handleStacks)
 	mux.HandleFunc("POST /v1/stacks", handleStackCreate)
 	mux.HandleFunc("GET /v1/stats", handleStats)
+	mux.HandleFunc("GET /v1/unmanaged", handleUnmanaged)
 	mux.HandleFunc("GET /v1/stacks/{name}/compose", handleComposeGet)
 	mux.HandleFunc("GET /v1/stacks/{name}/ps", handleStackPs)
 	mux.HandleFunc("GET /v1/stacks/{name}/images", handleStackImages)
@@ -296,6 +297,57 @@ func handleStackDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"deleted": true, "name": r.PathValue("name")})
+}
+
+// handleUnmanaged: laufende Container, die NICHT zu einem Stack im Stacks-Pfad
+// gehören. Rein informativ — Dockposer verwaltet sie nicht, macht sie nur sichtbar.
+// Zwei Sorten: compose-Stacks außerhalb des Pfads, und einzeln gestartete Container.
+func handleUnmanaged(w http.ResponseWriter, r *http.Request) {
+	out, err := run(r.Context(), "", 20*time.Second, "docker", "ps",
+		"--filter", "status=running",
+		"--format", "{{.Names}}\t{{.Image}}\t{{.Label \"com.docker.compose.project\"}}\t{{.Label \"com.docker.compose.project.working_dir\"}}")
+	if err != nil {
+		httpErr(w, 502, "docker ps fehlgeschlagen: "+strings.TrimSpace(out))
+		return
+	}
+
+	// Bekannte Stack-Ordner einsammeln (Vergleich über den absoluten Pfad)
+	known := map[string]bool{}
+	if entries, err := os.ReadDir(stacksDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				known[filepath.Join(stacksDir, e.Name())] = true
+			}
+		}
+	}
+
+	type unmanaged struct {
+		Name       string `json:"name"`
+		Image      string `json:"image"`
+		Project    string `json:"project,omitempty"`
+		WorkingDir string `json:"working_dir,omitempty"`
+		Kind       string `json:"kind"` // "external_stack" | "standalone"
+	}
+	items := []unmanaged{}
+	for _, line := range nonEmptyLines(out) {
+		cols := strings.Split(line, "\t")
+		if len(cols) < 4 {
+			continue
+		}
+		name, image, project, workdir := cols[0], cols[1], cols[2], cols[3]
+		if project == "" {
+			// Kein compose-Label → einzeln per docker run gestartet
+			items = append(items, unmanaged{Name: name, Image: image, Kind: "standalone"})
+			continue
+		}
+		if workdir != "" && known[filepath.Clean(workdir)] {
+			continue // gehört zu einem verwalteten Stack
+		}
+		items = append(items, unmanaged{
+			Name: name, Image: image, Project: project, WorkingDir: workdir, Kind: "external_stack",
+		})
+	}
+	writeJSON(w, items)
 }
 
 func handleComposeGet(w http.ResponseWriter, r *http.Request) {

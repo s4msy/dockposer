@@ -36,5 +36,35 @@
 				</li>
 			{/each}
 		</ul>
+
+		{#if (data.unmanaged[server.id] ?? []).length > 0}
+			{@const list = data.unmanaged[server.id]}
+			<details style="margin-top: var(--space-2); border-top: 1px solid var(--color-border); padding-top: var(--space-2);">
+				<summary style="color: var(--color-text-dim); cursor: pointer; min-height: 44px; display: flex; align-items: center;">
+					<span style="color: var(--color-warn);">⚠</span>&nbsp;{list.length} Container außerhalb von {server.stacksPath}
+				</summary>
+				<ul style="list-style: none; padding: 0; margin: var(--space-2) 0 0;">
+					{#each list as c (c.name)}
+						<li style="padding: var(--space-2) 0; border-top: 1px solid var(--color-border);">
+							<code>{c.name}</code>
+							<small style="display: block; color: var(--color-text-dim);">
+								{c.image}
+								{#if c.kind === 'standalone'}
+									· einzeln gestartet (kein Compose)
+								{:else if c.working_dir}
+									· Stack „{c.project}" aus <code>{c.working_dir}</code>
+								{:else}
+									· Stack „{c.project}" (Pfad unbekannt)
+								{/if}
+							</small>
+						</li>
+					{/each}
+				</ul>
+				<small style="display: block; margin-top: var(--space-2); color: var(--color-text-dim);">
+					Dockposer verwaltet diese nicht. Zum Aufnehmen: compose-Datei nach {server.stacksPath} verschieben
+					und dort neu starten — oder per SSH weiterpflegen.
+				</small>
+			</details>
+		{/if}
 	</div>
 {/each}

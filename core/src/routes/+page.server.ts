@@ -2,6 +2,8 @@ import type { PageServerLoad } from './$types';
 import { requireUser } from '$lib/server/guards';
 import { db } from '$lib/server/db';
 import { syncAll } from '$lib/server/agents/sync';
+import { fetchUnmanaged } from '$lib/server/agents/client';
+import { decrypt } from '$lib/server/crypto';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	requireUser(locals);
@@ -18,5 +20,19 @@ export const load: PageServerLoad = async ({ locals }) => {
 		}
 		return { ...s, updatesCount };
 	});
-	return { servers, stacks: stacksWithMeta };
+	// Nicht erfasste Container je Server — rein informativ, Fehler ignorieren
+	// (alte Agents kennen die Route nicht, offline-Server antworten gar nicht)
+	const unmanaged = Object.fromEntries(
+		await Promise.all(
+			servers.map(async (server) => {
+				try {
+					const list = await fetchUnmanaged(server.baseUrl, decrypt(server.agentTokenEnc));
+					return [server.id, list] as const;
+				} catch {
+					return [server.id, []] as const;
+				}
+			})
+		)
+	);
+	return { servers, stacks: stacksWithMeta, unmanaged };
 };

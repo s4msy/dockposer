@@ -26,6 +26,7 @@
 	let containers = $state(data.containers);
 	let sshCopied = $state(false);
 	let showDanger = $state(false);
+	let envOpen = $state(false);
 	let confirmName = $state('');
 	const stackStopped = $derived(
 		containers.length === 0 || !containers.some((c) => c.State === 'running' || c.State === 'restarting')
@@ -173,7 +174,8 @@
 		return n.toFixed(n >= 10 ? 0 : 1).replace('.', ',') + '\u00a0%';
 	}
 
-	function stateDot(state: string): string {
+	function stateDot(state: string, health?: string): string {
+		if (health === 'unhealthy') return 'unhealthy'; // läuft, aber Healthcheck schlägt an
 		if (state === 'running') return 'running';
 		if (state === 'exited' || state === 'dead') return 'stopped';
 		return 'partial';
@@ -281,10 +283,14 @@
 		<ul style="list-style: none; padding: 0; margin: var(--space-2) 0 0;">
 			{#each containers as c (c.Name)}
 				<li style="padding: var(--space-2) 0; border-top: 1px solid var(--color-border); display: flex; align-items: center; gap: var(--space-2);">
-					<span class="dot {stateDot(c.State)}"></span>
+					<span class="dot {stateDot(c.State, c.Health)}"></span>
 					<span style="flex: 1;">
 						{c.Service}
-						<small style="color: var(--color-text-dim); display: block;">{c.Status}{c.Health ? ` · ${c.Health}` : ''}</small>
+						<small style="color: var(--color-text-dim); display: block;">
+							{c.Status}{#if c.Health}
+								· <span style="color: {c.Health === 'unhealthy' ? 'var(--color-crit)' : c.Health === 'healthy' ? 'var(--color-ok)' : 'var(--color-warn)'}; font-weight: 700;">{c.Health}</span>
+							{/if}
+						</small>
 						{#if stats[c.Name]}
 							<small style="color: var(--color-text-dim); display: block;">CPU {fmtCpu(stats[c.Name].cpu)} · RAM {fmtSize(stats[c.Name].mem)}</small>
 						{/if}
@@ -340,6 +346,49 @@
 			<button style="margin-top: var(--space-2);" disabled={data.agentOffline}>Speichern (wird validiert)</button>
 		</form>
 	</div>
+
+	<details class="card" bind:open={envOpen}>
+		<summary style="cursor: pointer; min-height: 44px; display: flex; align-items: center;">
+			<strong>.env bearbeiten</strong>
+		</summary>
+
+		<p style="color: var(--color-text-dim); font-size: 0.85rem;">
+			Bearbeitet wird ausschließlich die Datei mit dem exakten Namen <code>.env</code> — Compose lädt nur
+			diese automatisch. Andere Schreibweisen (<code>.env.local</code>, <code>prod.env</code>) rührt Dockposer
+			nicht an; die pflegst du per SSH.
+			{#if data.compose?.env_files?.length}
+				<br />Im Ordner gefunden: {data.compose.env_files.join(', ')}
+			{/if}
+			<br /><strong>Wird nie nach Git committet</strong> — Secrets bleiben auf dem Server.
+		</p>
+
+		{#if form?.envError}<div class="alert-error" role="alert">{form.envError}</div>{/if}
+		{#if form?.envSaved}<p role="status" style="color: var(--color-ok);">Gespeichert. Neustart des Stacks („up -d") übernimmt die Werte.</p>{/if}
+
+		{#if form?.envLoaded}
+			{#if !form.envExists}
+				<p style="color: var(--color-text-dim);">Noch keine <code>.env</code> vorhanden — Speichern legt sie an.</p>
+			{/if}
+			<form method="POST" action="?/saveEnv" use:enhance={() => async ({ update }) => update({ reset: false })}>
+				<textarea
+					name="envContent"
+					value={form.envContent ?? ''}
+					rows="10"
+					spellcheck="false"
+					autocomplete="off"
+					style="width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-bg); color: var(--color-text); padding: var(--space-3);"
+				></textarea>
+				<button style="margin-top: var(--space-2);" disabled={data.agentOffline}>.env speichern</button>
+			</form>
+		{:else}
+			<form method="POST" action="?/loadEnv" use:enhance>
+				<button
+					style="background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);"
+					disabled={data.agentOffline}
+				>Inhalt laden</button>
+			</form>
+		{/if}
+	</details>
 {/if}
 
 <div class="card" style="margin-top: var(--space-6); border-color: var(--color-border);">

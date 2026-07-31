@@ -44,6 +44,7 @@ export interface AgentStack {
 	state: 'running' | 'partial' | 'stopped' | 'unknown';
 	services_running: number;
 	services_total: number;
+	services_unhealthy?: number;
 	drift: boolean;
 }
 
@@ -175,3 +176,19 @@ export interface AgentUnmanaged {
 
 export const fetchUnmanaged = (baseUrl: string, token: string) =>
 	agentFetch<AgentUnmanaged[]>(baseUrl, token, '/v1/unmanaged', {}, 20_000);
+
+export const fetchEnv = (baseUrl: string, token: string, stack: string) =>
+	agentFetch<{ exists: boolean; content: string }>(
+		baseUrl,
+		token,
+		`/v1/stacks/${encodeURIComponent(stack)}/env`
+	);
+
+export const putEnv = (baseUrl: string, token: string, stack: string, content: string) =>
+	agentFetch<{ saved: boolean; hash: string }>(
+		baseUrl,
+		token,
+		`/v1/stacks/${encodeURIComponent(stack)}/env`,
+		{ method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' } },
+		20_000
+	);

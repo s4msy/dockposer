@@ -1,0 +1,1 @@
+ALTER TABLE `stacks` ADD `services_unhealthy` integer DEFAULT 0 NOT NULL;

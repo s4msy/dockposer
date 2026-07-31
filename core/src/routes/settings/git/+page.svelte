@@ -71,7 +71,7 @@
 					<input
 						id="remote-{server.id}"
 						name="remote"
-						placeholder="git@link.piriot.de:martin/stacks-{server.name}.git"
+						placeholder="git@git.example.com:user/stacks-{server.name}.git"
 						autocomplete="off"
 					/>
 					<small style="color: var(--color-text-dim); display: block; margin-bottom: var(--space-3);">

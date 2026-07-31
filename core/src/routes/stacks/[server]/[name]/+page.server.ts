@@ -5,7 +5,7 @@ import { servers, stacks } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
 import { decrypt } from '$lib/server/crypto';
-import { fetchCompose, fetchStackPs, putCompose, deleteStack, AgentError } from '$lib/server/agents/client';
+import { fetchCompose, fetchStackPs, putCompose, deleteStack, fetchEnv, putEnv, AgentError } from '$lib/server/agents/client';
 import { checkStackUpdates } from '$lib/server/updates/checker';
 import { redirect } from '@sveltejs/kit';
 
@@ -129,6 +129,33 @@ export const actions: Actions = {
 		// Cache-Eintrag entfernen, damit die Übersicht sofort stimmt
 		await db.delete(stacks).where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
 		redirect(303, '/');
+	},
+
+	// .env-Inhalt nur auf ausdrückliche Anforderung laden — nie als Beifang
+	loadEnv: async ({ locals, params }) => {
+		requireUser(locals);
+		const server = await loadServer(params.server);
+		try {
+			const res = await fetchEnv(server.baseUrl, decrypt(server.agentTokenEnc), params.name);
+			return { envLoaded: true, envExists: res.exists, envContent: res.content };
+		} catch (e) {
+			const msg = e instanceof AgentError ? e.message : 'Laden fehlgeschlagen';
+			return fail(502, { envError: msg });
+		}
+	},
+
+	saveEnv: async ({ locals, params, request }) => {
+		requireUser(locals);
+		const server = await loadServer(params.server);
+		const content = String((await request.formData()).get('envContent') ?? '');
+		try {
+			await putEnv(server.baseUrl, decrypt(server.agentTokenEnc), params.name, content);
+			// Bewusst kein Git-Commit: .env enthält Secrets und ist in der .gitignore
+			return { envSaved: true, envLoaded: true, envExists: true, envContent: content };
+		} catch (e) {
+			const msg = e instanceof AgentError ? e.message : 'Speichern fehlgeschlagen';
+			return fail(422, { envError: msg, envLoaded: true, envExists: true, envContent: content });
+		}
 	},
 
 	toggleGit: async ({ locals, params }) => {

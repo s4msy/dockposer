@@ -2,7 +2,7 @@ import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqli
 
 // ── Enums (SQLite: text mit Typisierung) ────────────────────────────────
 export const serverStatus = ['online', 'offline', 'degraded'] as const;
-export const stackState = ['running', 'partial', 'stopped', 'unknown'] as const;
+export const stackState = ['running', 'partial', 'unhealthy', 'stopped', 'unknown'] as const;
 export const updatePolicy = ['manual', 'auto', 'auto_patch'] as const;
 export const alertScope = ['global', 'server', 'stack'] as const;
 export const alertType = [
@@ -95,6 +95,7 @@ export const stacks = sqliteTable(
 		state: text('state', { enum: stackState }).notNull().default('unknown'),
 		servicesRunning: integer('services_running').notNull().default(0), // für die „3/4"-Anzeige
 		servicesTotal: integer('services_total').notNull().default(0),
+		servicesUnhealthy: integer('services_unhealthy').notNull().default(0),
 		drift: integer('drift', { mode: 'boolean' }).notNull().default(false),
 		updatePolicy: text('update_policy', { enum: updatePolicy }).notNull().default('manual'),
 		gitTracking: integer('git_tracking', { mode: 'boolean' }).notNull().default(false),

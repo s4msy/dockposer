@@ -22,6 +22,7 @@ export async function syncServer(server: typeof servers.$inferSelect): Promise<v
 					state: s.state,
 					servicesRunning: s.services_running,
 					servicesTotal: s.services_total,
+					servicesUnhealthy: s.services_unhealthy ?? 0,
 					drift: s.drift,
 					lastSyncedAt: new Date()
 				})
@@ -32,6 +33,7 @@ export async function syncServer(server: typeof servers.$inferSelect): Promise<v
 						state: s.state,
 						servicesRunning: s.services_running,
 						servicesTotal: s.services_total,
+						servicesUnhealthy: s.services_unhealthy ?? 0,
 						drift: s.drift,
 						lastSyncedAt: new Date()
 					}

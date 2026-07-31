@@ -67,6 +67,8 @@ func main() {
 	mux.HandleFunc("GET /v1/stacks/{name}/images", handleStackImages)
 	mux.HandleFunc("POST /v1/stacks/{name}/update", handleUpdate)
 	mux.HandleFunc("PUT /v1/stacks/{name}/compose", handleComposePut)
+	mux.HandleFunc("GET /v1/stacks/{name}/env", handleEnvGet)
+	mux.HandleFunc("PUT /v1/stacks/{name}/env", handleEnvPut)
 	mux.HandleFunc("DELETE /v1/stacks/{name}", handleStackDelete)
 	mux.HandleFunc("GET /v1/git/status", handleGitStatus)
 	mux.HandleFunc("POST /v1/git/init", handleGitInit)
@@ -115,13 +117,14 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 type stackInfo struct {
-	Name            string `json:"name"`
-	Path            string `json:"path"`
-	ComposeHash     string `json:"compose_hash"`
-	State           string `json:"state"`
-	ServicesRunning int    `json:"services_running"`
-	ServicesTotal   int    `json:"services_total"`
-	Drift           bool   `json:"drift"`
+	Name              string `json:"name"`
+	Path              string `json:"path"`
+	ComposeHash       string `json:"compose_hash"`
+	State             string `json:"state"`
+	ServicesRunning   int    `json:"services_running"`
+	ServicesTotal     int    `json:"services_total"`
+	ServicesUnhealthy int    `json:"services_unhealthy"`
+	Drift             bool   `json:"drift"`
 }
 
 func handleStacks(w http.ResponseWriter, r *http.Request) {
@@ -158,29 +161,33 @@ func fillState(ctx context.Context, dir string, info *stackInfo) {
 		return
 	}
 	type psRow struct {
-		State string `json:"State"`
+		State  string `json:"State"`
+		Health string `json:"Health"`
 	}
-	running := 0
+	rows := []psRow{}
 	// compose gibt je nach Version ein JSON-Array oder Zeilen-JSON aus — beides abfangen
 	trimmed := strings.TrimSpace(out)
 	if strings.HasPrefix(trimmed, "[") {
-		var rows []psRow
-		if json.Unmarshal([]byte(trimmed), &rows) == nil {
-			for _, r := range rows {
-				if r.State == "running" {
-					running++
-				}
-			}
-		}
+		json.Unmarshal([]byte(trimmed), &rows)
 	} else {
 		for _, line := range nonEmptyLines(out) {
 			var row psRow
-			if json.Unmarshal([]byte(line), &row) == nil && row.State == "running" {
-				running++
+			if json.Unmarshal([]byte(line), &row) == nil {
+				rows = append(rows, row)
 			}
 		}
 	}
+	running, unhealthy := 0, 0
+	for _, r := range rows {
+		if r.State == "running" {
+			running++
+		}
+		if r.Health == "unhealthy" {
+			unhealthy++
+		}
+	}
 	info.ServicesRunning = running
+	info.ServicesUnhealthy = unhealthy
 	switch {
 	case info.ServicesTotal == 0:
 		info.State = "unknown"
@@ -188,6 +195,9 @@ func fillState(ctx context.Context, dir string, info *stackInfo) {
 		info.State = "stopped"
 	case running < info.ServicesTotal:
 		info.State = "partial"
+	case unhealthy > 0:
+		// Alles läuft, aber ein Healthcheck schlägt an — nicht als "grün" verkaufen
+		info.State = "unhealthy"
 	default:
 		info.State = "running"
 	}

@@ -2,8 +2,8 @@
 # Dockposer Agent — Installer
 #
 # Nutzung (Werte anpassen):
-#   curl -fsSL https://link.piriot.de/OWNER/dockposer/raw/branch/main/agent/install.sh | sh -s -- \
-#     --base https://link.piriot.de/OWNER/dockposer/raw/branch/main \
+#   curl -fsSL https://git.example.com/OWNER/dockposer/raw/branch/main/agent/install.sh | sh -s -- \
+#     --base https://git.example.com/OWNER/dockposer/raw/branch/main \
 #     --token <TOKEN-aus-der-UI> \
 #     --stacks /home/user/stacks \
 #     --user user
@@ -163,6 +163,14 @@ else
 fi
 
 say ""
+case "$LISTEN" in
+	127.*|localhost*)
+		warn "Der Agent lauscht nur auf Loopback ($LISTEN) — von anderen Rechnern NICHT erreichbar."
+		warn "Für Zugriff übers (WireGuard-)Netz: erneut ausführen mit  --listen <interface-ip>:8720"
+		warn "oder /etc/dockposer-agent.env anpassen und  systemctl restart dockposer-agent"
+		say ""
+		;;
+esac
 say "Fertig. Nächste Schritte:"
 say "  1. Caddy-Block für HTTPS davor, z. B.:"
 say "       agent-$(hostname).example.com {"

@@ -138,3 +138,6 @@ label { display: block; margin-bottom: var(--space-1); color: var(--color-text-d
 .term-line.err { color: #e8837a; }
 .term-line.warn { color: #d9b45b; }
 .term-line.dim { color: #7a6f66; }
+
+/* Läuft, aber Healthcheck schlägt an — bewusst nicht grün */
+.dot.unhealthy { background: var(--color-warn); }

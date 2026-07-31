@@ -29,6 +29,8 @@
 					{stack.name}
 					{#if stack.state === 'partial'}
 						<small>{stack.servicesRunning}/{stack.servicesTotal}</small>
+					{:else if stack.state === 'unhealthy'}
+						<small style="color: var(--color-warn);">unhealthy</small>
 					{/if}
 					{#if stack.drift}<small style="color:var(--color-warn)">drift</small>{/if}
 					{#if stack.updatesCount > 0}<small style="color:var(--color-warn); margin-left:auto;">{stack.updatesCount}↑</small>{/if}

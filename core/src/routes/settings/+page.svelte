@@ -235,4 +235,5 @@
 	<strong>Server</strong>
 	<p><a href="/settings/servers">Server verwalten →</a></p>
 	<p><a href="/settings/git">Git-Backend →</a></p>
+	<p><a href="/settings/registries">Private Registries →</a></p>
 </div>

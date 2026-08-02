@@ -172,3 +172,20 @@ export const updateRuns = sqliteTable('update_runs', {
 	finishedAt: integer('finished_at', { mode: 'timestamp' })
 });
 
+
+// ── Registry-Zugangsdaten (M5) ──────────────────────────────────────────
+// Pro Registry-Host ein Eintrag — realistisch hat man eine private Registry,
+// nicht zwanzig. Das Secret liegt AES-verschlüsselt (wie die Agent-Tokens).
+export const registryCredentials = sqliteTable('registry_credentials', {
+	id: integer('id').primaryKey({ autoIncrement: true }),
+	host: text('host').notNull().unique(), // z. B. git.example.com (ohne Schema)
+	username: text('username').notNull(),
+	secretEnc: text('secret_enc').notNull(), // Token/Passwort, AES-256-GCM
+	note: text('note'),
+	lastCheckAt: integer('last_check_at', { mode: 'timestamp' }),
+	lastCheckOk: integer('last_check_ok', { mode: 'boolean' }),
+	lastCheckMessage: text('last_check_message'),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});

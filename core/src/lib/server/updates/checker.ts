@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { decrypt } from '$lib/server/crypto';
 import { fetchImages } from '$lib/server/agents/client';
 import { parseImageRef, registryDigest, manifestChildDigests } from './registry';
+import { credentialFor } from './credentials';
 
 export interface UpdateEntry {
 	service: string;
@@ -11,6 +12,9 @@ export interface UpdateEntry {
 	current: string; // sha256:… (lokal)
 	latest: string; // sha256:… (Registry)
 	status: 'update' | 'current' | 'unknown';
+	/** Bei 'unknown': Host, für den Zugangsdaten fehlen könnten. */
+	host?: string;
+	authRequired?: boolean;
 }
 
 type Server = typeof servers.$inferSelect;
@@ -28,15 +32,26 @@ export async function checkStackUpdates(server: Server, stackName: string): Prom
 			continue;
 		}
 		const ref = parseImageRef(img.image);
-		const latest = await registryDigest(ref);
+		// Hinterlegte Zugangsdaten für diesen Registry-Host verwenden, falls vorhanden
+		const cred = await credentialFor(ref.host);
+		const latest = await registryDigest(ref, cred);
 		if (!latest) {
-			entries.push({ service: img.service, image: img.image, current: currents[0], latest: '', status: 'unknown' });
+			entries.push({
+				service: img.service,
+				image: img.image,
+				current: currents[0],
+				latest: '',
+				status: 'unknown',
+				host: ref.host,
+				// Ohne hinterlegte Zugangsdaten ist fehlende Auth die wahrscheinlichste Ursache
+				authRequired: !cred
+			});
 			continue;
 		}
 		let status: UpdateEntry['status'] = currents.includes(latest) ? 'current' : 'update';
 		if (status === 'update') {
 			// Gegenprüfung: lokaler Digest = Plattform-Manifest der aktuellen Liste? → doch current
-			const children = await manifestChildDigests(ref);
+			const children = await manifestChildDigests(ref, cred);
 			if (children.some((c) => currents.includes(c))) status = 'current';
 		}
 		entries.push({ service: img.service, image: img.image, current: currents[0], latest, status });

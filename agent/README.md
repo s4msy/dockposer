@@ -132,6 +132,22 @@ Ist der Stacks-Ordner schon ein Repo, lässt Dockposer es unangetastet: Die Einr
 
 ---
 
+# Private Registries
+
+Der Update-Feed prüft Digests direkt aus dem Core heraus (HEAD-Request gegen die Registry). Für private Images müssen dort Zugangsdaten hinterlegt sein: *Einstellungen → Private Registries*, pro Registry-Host ein Eintrag (Benutzername + Access-Token). Ohne Eintrag zeigt der Feed „Check nicht möglich“ und verlinkt direkt auf die Einrichtung.
+
+Bei Forgejo/Gitea: Access-Token unter *Einstellungen → Anwendungen* mit Leserecht im Bereich „Paket“. Das Token wird AES-verschlüsselt gespeichert und ausschließlich für Digest-Abfragen verwendet.
+
+**Wichtig — das Pullen selbst ist davon unabhängig:** `docker compose pull` läuft auf dem Zielserver und nutzt dessen eigenes Login. Auf jedem Server, der private Images zieht, einmalig:
+
+```sh
+docker login git.example.com
+```
+
+Dockposer verwaltet diese Anmeldung bewusst nicht — Credential-Verwaltung auf fremden Maschinen wäre ein eigenes Sicherheitsthema. Kurz: Registry-Zugangsdaten in Dockposer sind fürs *Erkennen* von Updates, `docker login` auf dem Server ist fürs *Ausführen*.
+
+---
+
 # Troubleshooting
 
 ## „Agent antwortet mit 500" beim Stack-Löschen
@@ -163,6 +179,10 @@ Der Agent lauscht auf `127.0.0.1` — der Installer testet lokal, der Core kommt
 ## Update wird nach erfolgreichem Update weiterhin angezeigt
 
 War ein Bug in frühen Versionen (Digest-Vergleich bei Multi-Arch-Images). Agent und Core aktualisieren; der Checker prüft seither die Plattform-Manifeste der Manifestliste gegen.
+
+## Update-Feed zeigt „Check nicht möglich"
+
+Die Registry liefert ohne Anmeldung keinen Digest. Zugangsdaten unter *Einstellungen → Private Registries* hinterlegen (siehe oben). Bei lokal gebauten Images (`build:` statt `image:`) ist die Meldung korrekt und bleibt bestehen — es gibt keine Registry, gegen die geprüft werden könnte.
 
 ## „git ist auf diesem Server nicht installiert"
 

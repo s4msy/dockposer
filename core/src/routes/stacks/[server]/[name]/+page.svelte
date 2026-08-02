@@ -246,7 +246,15 @@
 						{#if u.status === 'update'}
 							<small style="display: block; color: var(--color-text-dim);">{u.current.slice(7, 19)} → {u.latest.slice(7, 19)}</small>
 						{:else if u.status === 'unknown'}
-							<small style="display: block; color: var(--color-text-dim);">Check nicht möglich (privat/lokal gebaut)</small>
+							<small style="display: block; color: var(--color-text-dim);">
+								{#if u.authRequired && u.host}
+									Check nicht möglich — <a href="/settings/registries">Zugangsdaten für {u.host} hinterlegen</a>
+								{:else if u.host}
+									Check nicht möglich (Registry {u.host} liefert keinen Digest)
+								{:else}
+									Check nicht möglich (lokal gebaut, kein Registry-Image)
+								{/if}
+							</small>
 						{/if}
 					</span>
 				</li>

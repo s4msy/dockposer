@@ -43,6 +43,13 @@
       "when": 1785623995968,
       "tag": "0005_hide_stopped_stacks",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1785666067311,
+      "tag": "0006_registry_credentials",
+      "breakpoints": true
     }
   ]
 }

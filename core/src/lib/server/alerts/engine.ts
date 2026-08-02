@@ -5,6 +5,7 @@
 import { db } from '$lib/server/db';
 import { alertRules, alerts, servers, stacks, alertType } from '$lib/server/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
+import { translator, type MessageKey } from '$lib/i18n';
 
 type AlertType = (typeof alertType)[number];
 type Severity = 'info' | 'warning' | 'critical';
@@ -103,18 +104,19 @@ class AlertEngine {
 				this.dieTimes.set(key, times);
 
 				if (crashRule?.enabled && times.length >= needed) {
-					await this.fire('crash_loop', 'critical', serverId, project, container,
-						`${container}: ${times.length} Abstürze in ${Math.round(windowMs / 60_000)} min (zuletzt Exit ${exitCode})`);
+					await this.fire('crash_loop', 'critical', serverId, project, container, 'alert.crashLoop', {
+						container, count: times.length, minutes: Math.round(windowMs / 60_000), code: exitCode
+					});
 				} else if ((await this.rule('container_exit'))?.enabled) {
 					await this.fire('container_exit', 'warning', serverId, project, container,
-						`${container} unerwartet beendet (Exit ${exitCode})`);
+						'alert.containerExit', { container, code: exitCode });
 				}
 				return;
 			}
 			case 'oom': {
 				if ((await this.rule('oom_kill'))?.enabled) {
 					await this.fire('oom_kill', 'critical', serverId, project, container,
-						`${container} vom Kernel beendet (Out of Memory)`);
+						'alert.oomKill', { container });
 				}
 				return;
 			}
@@ -124,7 +126,7 @@ class AlertEngine {
 					await this.resolve(serverId, container, ['unhealthy']);
 				} else if ((await this.rule('unhealthy'))?.enabled && !this.isSuppressed(serverId, project)) {
 					await this.fire('unhealthy', 'warning', serverId, project, container,
-						`${container}: Healthcheck meldet unhealthy`);
+						'alert.unhealthy', { container });
 				}
 				return;
 			}
@@ -142,9 +144,16 @@ class AlertEngine {
 	}
 
 	// ── Updates: Ergebnis-Alerts (Container-Feld trägt hier den Stack-Namen) ──
-	async updateProblem(serverId: number, stackName: string, kind: 'pull_failed' | 'update_rolled_back', message: string) {
+	async updateProblem(
+		serverId: number,
+		stackName: string,
+		kind: 'pull_failed' | 'update_rolled_back',
+		messageKey: MessageKey,
+		params: Record<string, string | number>
+	) {
 		if ((await this.rule(kind))?.enabled) {
-			await this.fire(kind, kind === 'pull_failed' ? 'warning' : 'critical', serverId, undefined, stackName, message);
+			await this.fire(kind, kind === 'pull_failed' ? 'warning' : 'critical', serverId,
+				undefined, stackName, messageKey, params);
 		}
 	}
 
@@ -156,7 +165,7 @@ class AlertEngine {
 	async agentOffline(serverId: number, serverName: string) {
 		if ((await this.rule('agent_offline'))?.enabled) {
 			await this.fire('agent_offline', 'critical', serverId, undefined, undefined,
-				`Agent auf ${serverName} nicht erreichbar`);
+				'alert.agentOffline', { server: serverName });
 		}
 	}
 
@@ -171,7 +180,7 @@ class AlertEngine {
 		const threshold = rule.thresholds.free_percent ?? 10;
 		if (freePercent < threshold) {
 			await this.fire('disk_space', 'warning', serverId, undefined, undefined,
-				`${serverName}: nur noch ${freePercent.toFixed(1)} % frei am Stacks-Pfad`);
+				'alert.diskSpace', { server: serverName, percent: freePercent.toFixed(1) });
 		} else if (freePercent > threshold + 2) {
 			await this.resolveByType(serverId, 'disk_space'); // Hysterese gegen Flattern
 		}
@@ -179,7 +188,10 @@ class AlertEngine {
 
 	// ── DB-Schreiber mit Deduplizierung ──
 	private async fire(type: AlertType, severity: Severity, serverId: number,
-		project: string | undefined, container: string | undefined, message: string) {
+		project: string | undefined, container: string | undefined,
+		messageKey: MessageKey, params: Record<string, string | number> = {}) {
+		// Deutsch als gespeicherter Fallback; die Anzeige übersetzt über den Schlüssel.
+		const message = translator('de')(messageKey, params);
 		const conditions = [
 			eq(alerts.ruleType, type),
 			eq(alerts.serverId, serverId),
@@ -204,8 +216,11 @@ class AlertEngine {
 			const rows = await db.select({ id: stacks.id, name: stacks.name }).from(stacks).where(eq(stacks.serverId, serverId));
 			stackId = rows.find((s) => s.name.toLowerCase().replace(/[^a-z0-9_-]/g, '') === project)?.id;
 		}
-		await db.insert(alerts).values({ ruleType: type, serverId, stackId, containerName: container, severity, message });
-		notifyDispatchers({ type, severity, serverId, container, message });
+		await db.insert(alerts).values({
+			ruleType: type, serverId, stackId, containerName: container, severity,
+			message, messageKey, messageParamsJson: JSON.stringify(params)
+		});
+		notifyDispatchers({ type, severity, serverId, container, message, messageKey, params });
 	}
 
 	private async resolve(serverId: number, container: string, types: AlertType[]) {
@@ -235,6 +250,8 @@ export interface FiredAlert {
 	serverId: number;
 	container?: string;
 	message: string;
+	messageKey: MessageKey;
+	params: Record<string, string | number>;
 }
 type Dispatcher = (alert: FiredAlert) => void;
 const dispatchers: Dispatcher[] = [];

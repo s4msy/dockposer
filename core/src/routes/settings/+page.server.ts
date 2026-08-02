@@ -6,6 +6,7 @@ import { users } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
 import { generateTotpSecret, verifyTotp, verifyPassword } from '$lib/server/auth';
+import { translator } from '$lib/i18n';
 import { pushSubscriptions, webauthnCredentials } from '$lib/server/db/schema';
 import { and } from 'drizzle-orm';
 
@@ -62,15 +63,15 @@ export const actions: Actions = {
 		const user = requireUser(locals);
 		const code = String((await request.formData()).get('code') ?? '');
 		const [row] = await db.select().from(users).where(eq(users.id, user.id));
-		if (!row?.totpSecret) return fail(400, { totpError: 'Kein Secret vorhanden — neu starten.' });
-		if (!verifyTotp(row.totpSecret, code)) return fail(400, { totpError: 'Code ungültig.' });
+		if (!row?.totpSecret) return fail(400, { totpError: translator(locals.locale)('settings.totpNoSecret') });
+		if (!verifyTotp(row.totpSecret, code)) return fail(400, { totpError: translator(locals.locale)('settings.totpInvalidCode') });
 		await db.update(users).set({ totpEnabled: true }).where(eq(users.id, user.id));
 		return { totpDone: true };
 	},
 	setLocale: async ({ locals, request }) => {
 		const user = requireUser(locals);
 		const locale = String((await request.formData()).get('locale') ?? '');
-		if (!LOCALE_OPTIONS.includes(locale)) return fail(400, { error: 'Unbekannte Sprache.' });
+		if (!LOCALE_OPTIONS.includes(locale)) return fail(400, { error: translator(locals.locale)('reg.unknownLocale') });
 		await db.update(users).set({ locale }).where(eq(users.id, user.id));
 		return { localeSaved: locale };
 	},
@@ -78,7 +79,7 @@ export const actions: Actions = {
 	setTheme: async ({ locals, request }) => {
 		const user = requireUser(locals);
 		const theme = String((await request.formData()).get('theme') ?? '');
-		if (!THEMES.includes(theme)) return fail(400, { error: 'Unbekanntes Theme.' });
+		if (!THEMES.includes(theme)) return fail(400, { error: translator(locals.locale)('reg.unknownTheme') });
 		await db.update(users).set({ theme }).where(eq(users.id, user.id));
 		return { themeSaved: theme };
 	},
@@ -117,7 +118,7 @@ export const actions: Actions = {
 		));
 		if (topic) {
 			if (!/^https:\/\/.+\/.+/.test(topic)) {
-				return fail(400, { ntfyError: 'Vollständige Topic-URL angeben, z. B. https://ntfy.sh/mein-topic' });
+				return fail(400, { ntfyError: translator(locals.locale)('settings.ntfyInvalid') });
 			}
 			await db.insert(pushSubscriptions).values({ userId: user.id, transport: 'ntfy', ntfyTopic: topic });
 		}
@@ -130,7 +131,7 @@ export const actions: Actions = {
 		const password = String((await request.formData()).get('password') ?? '');
 		const [row] = await db.select().from(users).where(eq(users.id, user.id));
 		if (!row || !(await verifyPassword(password, row.passwordHash))) {
-			return fail(400, { totpError: 'Passwort falsch.' });
+			return fail(400, { totpError: translator(locals.locale)('settings.wrongPassword') });
 		}
 		await db.update(users).set({ totpEnabled: false, totpSecret: null }).where(eq(users.id, user.id));
 		return { totpDisabled: true };

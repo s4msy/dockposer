@@ -4,11 +4,13 @@ import { db } from '$lib/server/db';
 import { servers, stacks } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
+import { translator } from '$lib/i18n';
 import { decrypt, encrypt } from '$lib/server/crypto';
 import { fetchGitStatus, initGit, AgentError, type AgentGitStatus } from '$lib/server/agents/client';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	requireUser(locals);
+	const t = translator(locals.locale);
 	const list = await db.query.servers.findMany({ orderBy: (s, { asc }) => [asc(s.name)] });
 	const trackedStacks = await db
 		.select({ serverId: stacks.serverId, name: stacks.name, gitTracking: stacks.gitTracking })
@@ -21,7 +23,12 @@ export const load: PageServerLoad = async ({ locals }) => {
 			try {
 				status = await fetchGitStatus(server.baseUrl, decrypt(server.agentTokenEnc));
 			} catch (e) {
-				error = e instanceof AgentError ? e.message : 'Agent nicht erreichbar';
+				if (e instanceof AgentError && e.status === 404) {
+					// Route unbekannt = Agent kennt das Git-Backend noch nicht
+					error = t('git.agentOutdated');
+				} else {
+					error = e instanceof AgentError ? e.message : t('git.agentUnreachable');
+				}
 			}
 			return {
 				id: server.id,
@@ -47,6 +54,7 @@ function maskRemote(remote: string): string {
 export const actions: Actions = {
 	setup: async ({ locals, request }) => {
 		requireUser(locals);
+		const t = translator(locals.locale);
 		const form = await request.formData();
 		const id = Number(form.get('id'));
 		const remoteRaw = String(form.get('remote') ?? '').trim();
@@ -54,13 +62,13 @@ export const actions: Actions = {
 		const overwrite = form.get('overwriteGitignore') === 'on';
 
 		const [server] = await db.select().from(servers).where(eq(servers.id, id));
-		if (!server) return fail(404, { error: 'Server nicht gefunden.' });
+		if (!server) return fail(404, { error: t('stack.serverNotFound') });
 
 		// Leeres Feld = bestehendes Remote beibehalten
 		let remote = remoteRaw;
 		if (!remote && server.gitRemoteEnc) remote = decrypt(server.gitRemoteEnc);
 		if (remote && !/^(https?:\/\/|git@|ssh:\/\/)/.test(remote)) {
-			return fail(400, { error: 'Remote muss mit https://, ssh:// oder git@ beginnen.' });
+			return fail(400, { error: t('git.remoteInvalid') });
 		}
 
 		try {
@@ -74,7 +82,7 @@ export const actions: Actions = {
 			}
 			return { setupDone: id, ...res };
 		} catch (e) {
-			const msg = e instanceof AgentError ? e.message : 'Einrichtung fehlgeschlagen';
+			const msg = e instanceof AgentError ? e.message : t('git.setupFailed');
 			return fail(502, { error: msg });
 		}
 	},

@@ -281,16 +281,8 @@ label { display: block; margin-bottom: var(--space-1); color: var(--color-text-d
 	nav > :global(*) { max-width: none; }
 }
 
-/* Eingabefelder in breiten Karten nicht endlos ziehen */
-@media (min-width: 720px) {
-	input[type='text'],
-	input[type='url'],
-	input[type='password'],
-	input:not([type]) {
-		max-width: 640px;
-	}
-	button:not([style*='width: auto']) { max-width: 420px; }
-}
+/* Buttons und Eingabefelder füllen ihre Karte — halbbreite Elemente in einer
+   breiten Karte wirken wie ein Layoutfehler. Wer schmal will, setzt width:auto. */
 
 /* Im Querformat auf niedrigen Schirmen die vertikalen Abstände straffen */
 @media (max-height: 500px) and (orientation: landscape) {

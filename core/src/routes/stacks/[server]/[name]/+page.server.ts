@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { servers, stacks } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
+import { translator } from '$lib/i18n';
 import { decrypt } from '$lib/server/crypto';
 import { fetchCompose, fetchStackPs, putCompose, deleteStack, fetchEditableFiles, fetchFile, putFile, AgentError } from '$lib/server/agents/client';
 import { checkStackUpdates } from '$lib/server/updates/checker';
@@ -68,21 +69,23 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 export const actions: Actions = {
 	checkUpdates: async ({ locals, params }) => {
 		requireUser(locals);
+		const t = translator(locals.locale);
 		const server = await loadServer(params.server);
 		try {
 			await checkStackUpdates(server, params.name);
 			return { checked: true };
 		} catch (e) {
-			const msg = e instanceof AgentError ? e.message : 'Check fehlgeschlagen';
+			const msg = e instanceof AgentError ? e.message : t('stack.checkFailed');
 			return fail(502, { checkError: msg });
 		}
 	},
 
 	setPolicy: async ({ locals, params, request }) => {
 		requireUser(locals);
+		const t = translator(locals.locale);
 		const server = await loadServer(params.server);
 		const policy = String((await request.formData()).get('policy') ?? '');
-		if (!['manual', 'auto'].includes(policy)) return fail(400, { policyError: 'Ungültige Policy.' });
+		if (!['manual', 'auto'].includes(policy)) return fail(400, { policyError: t('stack.invalidPolicy') });
 		await db.update(stacks).set({ updatePolicy: policy as 'manual' | 'auto' })
 			.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
 		return { policySaved: true };
@@ -90,9 +93,10 @@ export const actions: Actions = {
 
 	saveCompose: async ({ locals, params, request }) => {
 		const user = requireUser(locals);
+		const t = translator(locals.locale);
 		const server = await loadServer(params.server);
 		const content = String((await request.formData()).get('content') ?? '');
-		if (!content.trim()) return fail(400, { saveError: 'Leere Datei speichere ich nicht.' });
+		if (!content.trim()) return fail(400, { saveError: t('stack.emptyFile') });
 		const [stackRow] = await db
 			.select({ gitTracking: stacks.gitTracking })
 			.from(stacks)
@@ -107,7 +111,7 @@ export const actions: Actions = {
 			);
 			return { saved: true, hash: res.hash, committed: res.committed ?? false, gitError: res.git_error ?? null };
 		} catch (e) {
-			const msg = e instanceof AgentError ? e.message : 'Unbekannter Fehler';
+			const msg = e instanceof AgentError ? e.message : t('stack.unknownError');
 			// 422 = Agent hat die Datei abgelehnt (compose config invalide)
 			return fail(422, { saveError: msg });
 		}
@@ -115,21 +119,22 @@ export const actions: Actions = {
 
 	deleteStack: async ({ locals, params, request }) => {
 		requireUser(locals);
+		const t = translator(locals.locale);
 		const server = await loadServer(params.server);
 		// Doppelte Bestätigung: Name muss exakt getippt werden
 		const confirmName = String((await request.formData()).get('confirmName') ?? '').trim();
 		if (confirmName !== params.name) {
-			return fail(400, { deleteError: 'Zur Bestätigung den Stack-Namen exakt eingeben.' });
+			return fail(400, { deleteError: t('stack.deleteNameMismatch') });
 		}
 		// Live prüfen, dass wirklich nichts läuft (Cache könnte veraltet sein)
 		try {
 			const containers = await fetchStackPs(server.baseUrl, decrypt(server.agentTokenEnc), params.name);
 			if (containers.some((c) => c.State === 'running' || c.State === 'restarting')) {
-				return fail(409, { deleteError: 'Stack läuft noch — erst „down", dann löschen.' });
+				return fail(409, { deleteError: t('stack.deleteStillRunning') });
 			}
 			await deleteStack(server.baseUrl, decrypt(server.agentTokenEnc), params.name);
 		} catch (e) {
-			const msg = e instanceof AgentError ? e.message : 'Löschen fehlgeschlagen';
+			const msg = e instanceof AgentError ? e.message : t('stack.deleteFailed');
 			return fail(502, { deleteError: msg });
 		}
 		// Cache-Eintrag entfernen, damit die Übersicht sofort stimmt
@@ -140,19 +145,21 @@ export const actions: Actions = {
 	// Datei-Inhalt nur auf ausdrückliche Anforderung laden — nie als Beifang
 	loadFile: async ({ locals, params, request }) => {
 		requireUser(locals);
+		const t = translator(locals.locale);
 		const server = await loadServer(params.server);
 		const fileName = String((await request.formData()).get('fileName') ?? '');
 		try {
 			const res = await fetchFile(server.baseUrl, decrypt(server.agentTokenEnc), params.name, fileName);
 			return { fileLoaded: true, fileName, fileExists: res.exists, fileContent: res.content };
 		} catch (e) {
-			const msg = e instanceof AgentError ? e.message : 'Laden fehlgeschlagen';
+			const msg = e instanceof AgentError ? e.message : t('stack.loadFailed');
 			return fail(502, { fileError: msg, fileName });
 		}
 	},
 
 	saveFile: async ({ locals, params, request }) => {
 		requireUser(locals);
+		const t = translator(locals.locale);
 		const server = await loadServer(params.server);
 		const form = await request.formData();
 		const fileName = String(form.get('fileName') ?? '');
@@ -162,7 +169,7 @@ export const actions: Actions = {
 			// Bewusst kein Git-Commit: .env-artige Dateien enthalten Secrets
 			return { fileSaved: true, fileLoaded: true, fileName, fileExists: true, fileContent: content };
 		} catch (e) {
-			const msg = e instanceof AgentError ? e.message : 'Speichern fehlgeschlagen';
+			const msg = e instanceof AgentError ? e.message : t('stack.saveFailed');
 			return fail(422, { fileError: msg, fileLoaded: true, fileName, fileExists: true, fileContent: content });
 		}
 	},

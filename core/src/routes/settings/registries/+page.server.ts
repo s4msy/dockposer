@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { registryCredentials, stacks } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
+import { translator } from '$lib/i18n';
 import { decrypt, encrypt } from '$lib/server/crypto';
 import { testCredential } from '$lib/server/updates/registry';
 import { invalidateCredentialCache, normalizeHost } from '$lib/server/updates/credentials';
@@ -46,6 +47,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
 	save: async ({ locals, request }) => {
 		requireUser(locals);
+		const t = translator(locals.locale);
 		const form = await request.formData();
 		const host = normalizeHost(String(form.get('host') ?? ''));
 		const username = String(form.get('username') ?? '').trim();
@@ -53,9 +55,9 @@ export const actions: Actions = {
 		const note = String(form.get('note') ?? '').trim() || null;
 
 		if (!host || !/^[a-z0-9.-]+(:\d{1,5})?$/.test(host)) {
-			return fail(400, { error: 'Host angeben, z. B. git.example.com (ohne https:// und Pfad).' });
+			return fail(400, { error: t('reg.hostInvalid') });
 		}
-		if (!username) return fail(400, { error: 'Benutzername fehlt.' });
+		if (!username) return fail(400, { error: t('reg.userMissing') });
 
 		const [existing] = await db.select().from(registryCredentials).where(eq(registryCredentials.host, host));
 		if (existing) {
@@ -72,7 +74,7 @@ export const actions: Actions = {
 				})
 				.where(eq(registryCredentials.id, existing.id));
 		} else {
-			if (!secret) return fail(400, { error: 'Token/Passwort fehlt.' });
+			if (!secret) return fail(400, { error: t('reg.secretMissing') });
 			await db.insert(registryCredentials).values({ host, username, secretEnc: encrypt(secret), note });
 		}
 		invalidateCredentialCache();
@@ -81,9 +83,10 @@ export const actions: Actions = {
 
 	test: async ({ locals, request }) => {
 		requireUser(locals);
+		const t = translator(locals.locale);
 		const id = Number((await request.formData()).get('id'));
 		const [row] = await db.select().from(registryCredentials).where(eq(registryCredentials.id, id));
-		if (!row) return fail(404, { error: 'Eintrag nicht gefunden.' });
+		if (!row) return fail(404, { error: t('reg.notFound') });
 		const result = await testCredential(row.host, {
 			username: row.username,
 			secret: decrypt(row.secretEnc)

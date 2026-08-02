@@ -2,6 +2,7 @@ import { db } from '$lib/server/db';
 import { servers, stacks, updateRuns } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { engine } from '$lib/server/alerts/engine';
+import { translator } from '$lib/i18n';
 
 interface AgentResult {
 	result: 'success' | 'rolled_back' | 'failed';
@@ -48,14 +49,14 @@ export async function recordUpdateRun(
 
 	if (!parsed || parsed.result === 'failed' || parsed.result === 'rolled_back') {
 		const kind = parsed?.stage === 'pull' ? 'pull_failed' : 'update_rolled_back';
-		const detail = parsed?.reason ?? 'Update-Lauf ohne Ergebnis abgebrochen';
-		const message =
+		const detail = parsed?.reason ?? translator('de')('alert.noResult');
+		const messageKey =
 			kind === 'pull_failed'
-				? `Update von ${stackName}: Pull fehlgeschlagen`
+				? 'alert.pullFailed'
 				: parsed?.result === 'rolled_back'
-					? `Update von ${stackName} fehlgeschlagen — Rollback aktiv. Läuft wieder auf altem Stand. (${detail})`
-					: `Update von ${stackName} fehlgeschlagen: ${detail}`;
-		await engine.updateProblem(serverId, stackName, kind, message);
+					? 'alert.rolledBack'
+					: 'alert.updateFailed';
+		await engine.updateProblem(serverId, stackName, kind, messageKey, { stack: stackName, reason: detail });
 	} else if (parsed.result === 'success') {
 		await engine.updateOk(serverId, stackName);
 	}

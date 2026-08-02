@@ -2,7 +2,10 @@
 	import type { ActionData, PageData } from './$types';
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
+	import { page } from '$app/state';
+	import { translator } from '$lib/i18n';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+	const t = $derived(translator(page.data.locale ?? 'en'));
 
 	let output = $state<{ text: string; cls: string }[]>([]);
 
@@ -106,7 +109,7 @@
 							const changed = Object.entries(r.new_digests ?? {}).filter(
 								([svc, d]) => (r.old_digests ?? {})[svc] !== d
 							).length;
-							pushLine(changed > 0 ? `── Ergebnis: Erfolg, ${changed} Service(s) aktualisiert ──` : '── Ergebnis: bereits aktuell, keine Änderung ──', 'ok');
+							pushLine(changed > 0 ? `── Ergebnis: Erfolg, ${changed} Service(s) aktualisiert ──` : '── ' + t('stack.updates') + ': ' + t('stack.policySaved') + ' ──', 'ok');
 						} else if (r.result === 'rolled_back') {
 							pushLine(`── Ergebnis: Rollback aktiv (${r.reason ?? ''}) ──`, 'err');
 						} else {
@@ -184,15 +187,15 @@
 
 <h1>
 	{data.name}
-	<small style="color: var(--color-text-dim); font-weight: 400;">auf {data.server.name}</small>
+	<small style="color: var(--color-text-dim); font-weight: 400;">{t('stack.onServer', { server: data.server.name })}</small>
 </h1>
 <p style="display: flex; gap: var(--space-3);">
-	<a href="/">← Übersicht</a>
+	<a href="/">{t('stack.backToOverview')}</a>
 	{#if data.server.sshUrl}
-		<a href={data.server.sshUrl} style="margin-left: auto;">Terminal öffnen ↗</a>
+		<a href={data.server.sshUrl} style="margin-left: auto;">{t('stack.openTerminal')}</a>
 		<button
 			style="width: auto; min-height: 0; padding: 0 var(--space-2); background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary); font-size: 0.8rem;"
-			title="SSH-Kommando kopieren (falls der Browser den User aus dem Link entfernt)"
+			title={t('stack.copySshHint')}
 			onclick={() => {
 				// ssh://user@host:2222 → „ssh -p 2222 user@host"
 				const rest = data.server.sshUrl!.slice(6);
@@ -202,20 +205,19 @@
 				sshCopied = true;
 				setTimeout(() => (sshCopied = false), 2000);
 			}}
-		>{sshCopied ? '✓ kopiert' : '⧉'}</button>
+		>{sshCopied ? '✓ ' + t('stack.copied') : '⧉'}</button>
 	{/if}
 </p>
 
 {#if data.agentOffline}
-	<div class="alert-error" role="alert">Agent nicht erreichbar — Anzeige ggf. veraltet, Aktionen deaktiviert.</div>
+	<div class="alert-error" role="alert">{t('stack.agentOffline')}</div>
 {/if}
 
 {#if data.compose?.pinned}
 	<div class="card" style="border-left: 4px solid var(--color-warn);" role="alert">
-		<strong>Stack läuft auf gepinnter alter Version</strong>
+		<strong>{t('stack.pinnedTitle')}</strong>
 		<p style="margin: var(--space-1) 0 0; color: var(--color-text-dim);">
-			Ein Update ist fehlgeschlagen, <code>.dockposer-rollback.yaml</code> pinnt die alten Images.
-			Aufräumen: compose.yaml aktualisieren, Pin-Datei per SSH löschen, „up -d" — oder erneut ein Update versuchen.
+			{t('stack.pinnedHint', { file: '.dockposer-rollback.yaml' })}
 		</p>
 	</div>
 {/if}
@@ -226,12 +228,12 @@
 	<button
 		disabled={!!busy || data.agentOffline}
 		style="background: transparent; color: var(--color-crit); border: 1px solid var(--color-crit);"
-		onclick={() => confirm(`Stack „${data.name}" wirklich stoppen?`) && runAction('down')}
+		onclick={() => confirm(t('stack.confirmDown', { name: data.name })) && runAction('down')}
 	>down</button>
 </div>
 
 <div class="card">
-	<strong>Updates</strong>
+	<strong>{t('stack.updates')}</strong>
 	{#if form?.checkError}<div class="alert-error" role="alert">{form.checkError}</div>{/if}
 
 	{#if data.updates.length > 0}
@@ -248,11 +250,12 @@
 						{:else if u.status === 'unknown'}
 							<small style="display: block; color: var(--color-text-dim);">
 								{#if u.authRequired && u.host}
-									Check nicht möglich — <a href="/settings/registries">Zugangsdaten für {u.host} hinterlegen</a>
+									{t('stack.checkImpossibleAuth')}
+									<a href="/settings/registries">{t('stack.addCredentials', { host: u.host })}</a>
 								{:else if u.host}
-									Check nicht möglich (Registry {u.host} liefert keinen Digest)
+									{t('stack.checkImpossibleHost', { host: u.host })}
 								{:else}
-									Check nicht möglich (lokal gebaut, kein Registry-Image)
+									{t('stack.checkImpossibleLocal')}
 								{/if}
 							</small>
 						{/if}
@@ -263,31 +266,31 @@
 	{/if}
 	{#if data.lastUpdateCheck}
 		<small style="color: var(--color-text-dim); display: block; margin-bottom: var(--space-2);">
-			Letzter Check: {new Date(data.lastUpdateCheck).toLocaleString('de-DE')}
+			{t('stack.lastCheck', { date: new Date(data.lastUpdateCheck).toLocaleString(page.data.locale ?? 'en') })}
 		</small>
 	{/if}
 
 	<div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2);">
 		<form method="POST" action="?/checkUpdates" use:enhance>
-			<button style="background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);" disabled={data.agentOffline}>Nach Updates suchen</button>
+			<button style="background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);" disabled={data.agentOffline}>{t('stack.checkUpdates')}</button>
 		</form>
-		<button disabled={!!busy || data.agentOffline} onclick={() => runAction('update')}>Update (Auto-Rollback)</button>
+		<button disabled={!!busy || data.agentOffline} onclick={() => runAction('update')}>{t('stack.runUpdate')}</button>
 	</div>
 
 	<form method="POST" action="?/setPolicy" use:enhance style="margin-top: var(--space-3); display: flex; gap: var(--space-2); align-items: center;">
-		<label for="policy" style="margin: 0; flex: 1;">Update-Policy</label>
+		<label for="policy" style="margin: 0; flex: 1;">{t('stack.updatePolicy')}</label>
 		<select id="policy" name="policy" value={data.updatePolicy} style="font: inherit; padding: var(--space-2); border-radius: var(--radius); border: 1px solid var(--color-border); background: var(--color-bg); color: var(--color-text);">
-			<option value="manual">manuell</option>
-			<option value="auto">automatisch</option>
+			<option value="manual">{t('stack.policyManual')}</option>
+			<option value="auto">{t('stack.policyAuto')}</option>
 		</select>
 		<button style="width: auto;">OK</button>
 	</form>
-	{#if form?.policySaved}<small role="status" style="color: var(--color-ok);">Policy gespeichert.</small>{/if}
+	{#if form?.policySaved}<small role="status" style="color: var(--color-ok);">{t('stack.policySaved')}</small>{/if}
 </div>
 
 {#if containers.length > 0}
 	<div class="card">
-		<strong>Services</strong>
+		<strong>{t('stack.services')}</strong>
 		<ul style="list-style: none; padding: 0; margin: var(--space-2) 0 0;">
 			{#each containers as c (c.Name)}
 				<li style="padding: var(--space-2) 0; border-top: 1px solid var(--color-border); display: flex; align-items: center; gap: var(--space-2);">
@@ -307,7 +310,7 @@
 						style="width: auto; min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);"
 						onclick={() => toggleLogs(c.Name)}
 					>
-						{logSource?.container === c.Name ? 'Stopp' : 'Logs'}
+						{logSource?.container === c.Name ? t('stack.stopLogs') : t('stack.logs')}
 					</button>
 				</li>
 			{/each}
@@ -324,22 +327,25 @@
 		<strong>{data.compose.file}</strong>
 		{#if data.compose.env_files.length > 0}
 			<small style="color: var(--color-text-dim); display: block;">
-				.env-Dateien (bleiben auf dem Server): {data.compose.env_files.join(', ')}
+				{t('stack.envFilesFound', { files: data.compose.env_files.join(', ') })}
 			</small>
 		{/if}
 
 		<form method="POST" action="?/toggleGit" use:enhance style="margin: var(--space-2) 0; display: flex; align-items: center; gap: var(--space-2);">
 			<button style="width: auto; min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent; color: {data.gitTracking ? 'var(--color-ok)' : 'var(--color-text-dim)'}; border: 1px solid currentColor;">
-				{data.gitTracking ? '✓ Git-Tracking an' : 'Git-Tracking aus'}
+				{data.gitTracking ? t('stack.gitOn') : t('stack.gitOff')}
 			</button>
-			<small style="color: var(--color-text-dim);">Jede Änderung wird als Commit im Stacks-Repo protokolliert (<a href="/settings/git">einrichten</a>). Volumes und <code>.env</code> bleiben ausgeschlossen.</small>
+			<small style="color: var(--color-text-dim);">
+				{t('stack.gitHint', { link: '' })}
+				<a href="/settings/git">{t('stack.gitSetUp')}</a>
+			</small>
 		</form>
 
 		{#if form?.saveError}<div class="alert-error" role="alert" style="margin-top: var(--space-2);">{form.saveError}</div>{/if}
 		{#if form?.saved}
 			<p role="status" style="color: var(--color-ok);">
-				Gespeichert{form.committed ? ' & committed' : ''}. „up -d" zum Anwenden.
-				{#if form.gitError}<span style="color: var(--color-warn);"> Git-Hinweis: {form.gitError}</span>{/if}
+				{t('stack.composeSaved', { committed: form.committed ? t('stack.andCommitted') : '' })}
+				{#if form.gitError}<span style="color: var(--color-warn);"> {t('stack.gitNote', { msg: form.gitError })}</span>{/if}
 			</p>
 		{/if}
 
@@ -351,34 +357,33 @@
 				spellcheck="false"
 				style="width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-bg); color: var(--color-text); padding: var(--space-3);"
 			></textarea>
-			<button style="margin-top: var(--space-2);" disabled={data.agentOffline}>Speichern (wird validiert)</button>
+			<button style="margin-top: var(--space-2);" disabled={data.agentOffline}>{t('stack.saveCompose')}</button>
 		</form>
 	</div>
 
 	<details class="card" bind:open={envOpen}>
 		<summary style="cursor: pointer; min-height: 44px; display: flex; align-items: center;">
-			<strong>Konfigurationsdateien</strong>
+			<strong>{t('stack.configFiles')}</strong>
 		</summary>
 
 		{#if data.editableFiles.length === 0}
 			<p style="color: var(--color-text-dim);">
-				Keine bearbeitbaren Dateien gefunden.
+				{t('stack.noEditableFiles')}
 				{#if data.allowedPatterns.length > 0}
-					Zugelassen auf diesem Server: <code>{data.allowedPatterns.join(', ')}</code>.
+					{t('stack.allowedOnServer', { list: data.allowedPatterns.join(', ') })}
 				{/if}
-				<br />Die Liste bestimmt <code>DOCKPOSER_EDITABLE_FILES</code> in der Agent-Konfiguration
-				(z. B. <code>.env,Caddyfile</code>) — Compose lädt automatisch nur <code>.env</code>.
+				<br />{t('stack.editableHint', { var: 'DOCKPOSER_EDITABLE_FILES' })}
 			</p>
 		{:else}
 			<p style="color: var(--color-text-dim); font-size: 0.85rem;">
-				Zugelassen: <code>{data.allowedPatterns.join(', ')}</code> (Agent-Einstellung
-				<code>DOCKPOSER_EDITABLE_FILES</code>). <strong>Nichts davon wird nach Git committet.</strong>
+				{t('stack.allowed', { list: data.allowedPatterns.join(', '), var: 'DOCKPOSER_EDITABLE_FILES' })}
+				<strong>{t('stack.neverCommitted')}</strong>
 			</p>
 
 			{#if form?.fileError}<div class="alert-error" role="alert">{form.fileError}</div>{/if}
 			{#if form?.fileSaved}
 				<p role="status" style="color: var(--color-ok);">
-					<code>{form.fileName}</code> gespeichert. Neustart des Stacks übernimmt die Änderung.
+					{t('stack.fileSaved', { file: form.fileName })}
 				</p>
 			{/if}
 
@@ -400,7 +405,7 @@
 			{#if form?.fileLoaded}
 				<form method="POST" action="?/saveFile" use:enhance={() => async ({ update }) => update({ reset: false })}>
 					<input type="hidden" name="fileName" value={form.fileName} />
-					<label for="fileContent"><code>{form.fileName}</code>{#if !form.fileExists} — noch nicht vorhanden, Speichern legt sie an{/if}</label>
+					<label for="fileContent"><code>{form.fileName}</code>{#if !form.fileExists} — {t('stack.fileNotYet')}{/if}</label>
 					<textarea
 						id="fileContent"
 						name="fileContent"
@@ -410,7 +415,7 @@
 						autocomplete="off"
 						style="width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-bg); color: var(--color-text); padding: var(--space-3);"
 					></textarea>
-					<button style="margin-top: var(--space-2);" disabled={data.agentOffline}>Speichern</button>
+					<button style="margin-top: var(--space-2);" disabled={data.agentOffline}>{t('common.save')}</button>
 				</form>
 			{/if}
 		{/if}
@@ -422,25 +427,25 @@
 		<button
 			onclick={() => (showDanger = true)}
 			style="background: transparent; color: var(--color-text-dim); border: 1px dashed var(--color-border);"
-		>Stack löschen …</button>
+		>{t('stack.deleteOpen')}</button>
 	{:else}
-		<strong style="color: var(--color-crit);">Stack löschen</strong>
+		<strong style="color: var(--color-crit);">{t('stack.deleteTitle')}</strong>
 		{#if !stackStopped}
-			<p style="color: var(--color-text-dim);">Nur möglich, wenn der Stack gestoppt ist. Erst „down" ausführen.</p>
+			<p style="color: var(--color-text-dim);">{t('stack.deleteOnlyStopped')}</p>
 		{:else}
 			<p style="color: var(--color-text-dim);">
-				Entfernt den Ordner <code>{data.name}</code> auf dem Server. <strong>Volumes bleiben erhalten</strong> (per SSH aufräumen, falls gewünscht).
+				{t('stack.deleteHint', { name: data.name })}
 			</p>
 			{#if form?.deleteError}<div class="alert-error" role="alert">{form.deleteError}</div>{/if}
 			<form method="POST" action="?/deleteStack" use:enhance>
-				<label for="confirmName">Zur Bestätigung „{data.name}" eingeben</label>
+				<label for="confirmName">{t('stack.deleteConfirmLabel', { name: data.name })}</label>
 				<input id="confirmName" name="confirmName" bind:value={confirmName} autocomplete="off" placeholder={data.name} />
 				<button
 					disabled={confirmName !== data.name}
 					style="background: var(--color-crit);"
-				>Unwiderruflich löschen</button>
+				>{t('stack.deleteConfirmBtn')}</button>
 			</form>
 		{/if}
-		<button onclick={() => (showDanger = false)} style="background: transparent; color: var(--color-text-dim); border: none; margin-top: var(--space-2);">Abbrechen</button>
+		<button onclick={() => (showDanger = false)} style="background: transparent; color: var(--color-text-dim); border: none; margin-top: var(--space-2);">{t('common.cancel')}</button>
 	{/if}
 </div>

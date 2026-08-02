@@ -131,7 +131,9 @@ export const alerts = sqliteTable(
 		stackId: integer('stack_id').references(() => stacks.id, { onDelete: 'set null' }),
 		containerName: text('container_name'),
 		severity: text('severity', { enum: alertSeverity }).notNull(),
-		message: text('message').notNull(),
+		message: text('message').notNull(), // gerenderter Text (Fallback / Altbestand)
+		messageKey: text('message_key'), // i18n-Schlüssel, erst zur Anzeige übersetzt
+		messageParamsJson: text('message_params_json'),
 		firedAt: integer('fired_at', { mode: 'timestamp' })
 			.notNull()
 			.$defaultFn(() => new Date()),

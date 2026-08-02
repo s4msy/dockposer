@@ -1,7 +1,10 @@
 <script lang="ts">
 	import type { ActionData, PageData } from './$types';
 	import { enhance } from '$app/forms';
+	import { page } from '$app/state';
+	import { translator } from '$lib/i18n';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+	const t = $derived(translator(page.data.locale ?? 'en'));
 
 	let showAdd = $state(false);
 	let editHost = $state('');
@@ -18,21 +21,20 @@
 		showAdd = true;
 	}
 
-	const fmtTime = (d: Date | string) => new Date(d).toLocaleString('de-DE');
+	const fmtTime = (d: Date | string) => new Date(d).toLocaleString(page.data.locale ?? 'en');
 </script>
 
-<h1>Private Registries</h1>
-<p><a href="/settings">← Einstellungen</a></p>
+<h1>{t('reg.title')}</h1>
+<p><a href="/settings">{t('servers.backToSettings')}</a></p>
 
 <div class="card">
 	<p style="color: var(--color-text-dim); margin: 0;">
-		Zugangsdaten für Registries, die ohne Anmeldung keinen Digest liefern. Ohne Eintrag zeigt der
-		Update-Feed für solche Images „Check nicht möglich“ — Updates lassen sich trotzdem manuell ausführen.
+		{t('reg.intro')}
 	</p>
 </div>
 
 {#if form?.error}<div class="alert-error" role="alert">{form.error}</div>{/if}
-{#if form?.saved}<p role="status" style="color: var(--color-ok);">Zugangsdaten für <code>{form.saved}</code> gespeichert. Jetzt testen.</p>{/if}
+{#if form?.saved}<p role="status" style="color: var(--color-ok);">{t('reg.saved', { host: form.saved })}</p>{/if}
 
 {#each data.credentials as cred (cred.id)}
 	<div class="card">
@@ -48,7 +50,7 @@
 		</div>
 
 		<p style="margin: 0 0 var(--space-2);">
-			Benutzer: <code>{cred.username}</code>
+			{t('reg.user', { name: cred.username })}
 			{#if cred.note}<small style="display: block; color: var(--color-text-dim);">{cred.note}</small>{/if}
 		</p>
 
@@ -59,29 +61,29 @@
 				{cred.lastCheckMessage} <span style="color: var(--color-text-dim);">({fmtTime(cred.lastCheckAt)})</span>
 			</small>
 		{:else}
-			<small style="display: block; color: var(--color-text-dim); margin-bottom: var(--space-2);">Noch nicht getestet.</small>
+			<small style="display: block; color: var(--color-text-dim); margin-bottom: var(--space-2);">{t('reg.notTested')}</small>
 		{/if}
 
 		<div style="display: flex; gap: var(--space-2);">
 			<form method="POST" action="?/test" use:enhance style="flex: 1;">
 				<input type="hidden" name="id" value={cred.id} />
-				<button style="background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);">Testen</button>
+				<button style="background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);">{t('common.test')}</button>
 			</form>
 			<button
 				style="flex: 1; background: transparent; color: var(--color-text-dim); border: 1px solid var(--color-border);"
 				onclick={() => startEdit(cred.host, cred.username)}
-			>Bearbeiten</button>
+			>{t('common.edit')}</button>
 			<form
 				method="POST"
 				action="?/remove"
 				use:enhance={() => {
-					if (!confirm(`Zugangsdaten für „${cred.host}" entfernen?`)) return () => {};
+					if (!confirm(t('reg.confirmRemove', { host: cred.host }))) return () => {};
 					return async ({ update }) => update();
 				}}
 				style="flex: 1;"
 			>
 				<input type="hidden" name="id" value={cred.id} />
-				<button style="background: transparent; color: var(--color-crit); border: 1px solid var(--color-crit);">Entfernen</button>
+				<button style="background: transparent; color: var(--color-crit); border: 1px solid var(--color-crit);">{t('common.remove')}</button>
 			</form>
 		</div>
 	</div>
@@ -89,14 +91,14 @@
 
 {#if data.suggestions.length > 0 && !showAdd}
 	<div class="card" style="border-left: 4px solid var(--color-warn);">
-		<strong>Ohne Zugangsdaten nicht prüfbar</strong>
+		<strong>{t('reg.notPossible')}</strong>
 		<ul style="list-style: none; padding: 0; margin: var(--space-2) 0 0;">
 			{#each data.suggestions as s (s.host)}
 				<li style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; border-top: 1px solid var(--color-border);">
 					<span style="flex: 1;"><code>{s.host}</code>
-						<small style="display: block; color: var(--color-text-dim);">{s.count} Image(s)</small>
+						<small style="display: block; color: var(--color-text-dim);">{t('reg.imagesCount', { count: s.count })}</small>
 					</span>
-					<button style="width: auto;" onclick={() => startAdd(s.host)}>Zugangsdaten</button>
+					<button style="width: auto;" onclick={() => startAdd(s.host)}>{t('reg.credentials')}</button>
 				</li>
 			{/each}
 		</ul>
@@ -105,29 +107,28 @@
 
 {#if showAdd}
 	<form method="POST" action="?/save" class="card" use:enhance={() => async ({ update }) => update({ reset: false })}>
-		<label for="host">Registry-Host</label>
+		<label for="host">{t('reg.host')}</label>
 		<input id="host" name="host" value={prefill} placeholder="git.example.com" required autocomplete="off" />
 
-		<label for="username">Benutzername</label>
+		<label for="username">{t('reg.username')}</label>
 		<input id="username" name="username" value={editHost} required autocomplete="off" />
 
-		<label for="secret">Token oder Passwort{#if editHost} (leer lassen = beibehalten){/if}</label>
+		<label for="secret">{editHost ? t('reg.secretKeep') : t('reg.secret')}</label>
 		<input id="secret" name="secret" type="password" autocomplete="off" />
 		<small style="color: var(--color-text-dim); display: block; margin-bottom: var(--space-3);">
-			Ein Access-Token mit Lese-Recht genügt — bei Forgejo/Gitea unter Einstellungen → Anwendungen,
-			Bereich „Paket“ mit Leserechten. Wird verschlüsselt gespeichert und nur für Digest-Abfragen verwendet.
+			{t('reg.secretHint')}
 		</small>
 
-		<label for="note">Notiz (optional)</label>
-		<input id="note" name="note" placeholder="z. B. Read-only-Token, gültig bis …" autocomplete="off" />
+		<label for="note">{t('reg.note')}</label>
+		<input id="note" name="note" placeholder={t('reg.notePlaceholder')} autocomplete="off" />
 
-		<button>Speichern</button>
+		<button>{t('common.save')}</button>
 		<button
 			type="button"
 			onclick={() => (showAdd = false)}
 			style="background: transparent; color: var(--color-text-dim); border: none; margin-top: var(--space-2);"
-		>Abbrechen</button>
+		>{t('common.cancel')}</button>
 	</form>
 {:else}
-	<button onclick={() => startAdd()}>Registry hinzufügen</button>
+	<button onclick={() => startAdd()}>{t('reg.add')}</button>
 {/if}

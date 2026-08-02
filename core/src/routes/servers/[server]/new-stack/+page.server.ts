@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
 import { decrypt } from '$lib/server/crypto';
 import { createStack, AgentError } from '$lib/server/agents/client';
+import { translator } from '$lib/i18n';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
 	requireUser(locals);
@@ -23,12 +24,12 @@ export const actions: Actions = {
 		const name = String(form.get('name') ?? '').trim();
 		const content = String(form.get('content') ?? '');
 		if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(name)) {
-			return fail(400, { error: 'Ungültiger Name (erlaubt: a-z, 0-9, . _ -).', name, content });
+			return fail(400, { error: translator(locals.locale)('newstack.invalidName'), name, content });
 		}
 		try {
 			await createStack(server.baseUrl, decrypt(server.agentTokenEnc), name, content);
 		} catch (e) {
-			const msg = e instanceof AgentError ? e.message : 'Unbekannter Fehler';
+			const msg = e instanceof AgentError ? e.message : translator(locals.locale)('stack.unknownError');
 			return fail(422, { error: msg, name, content });
 		}
 		redirect(303, `/stacks/${server.id}/${encodeURIComponent(name)}`);

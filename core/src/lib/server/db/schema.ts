@@ -29,6 +29,7 @@ export const users = sqliteTable('users', {
 	totpEnabled: integer('totp_enabled', { mode: 'boolean' }).notNull().default(false),
 	hideStoppedStacks: integer('hide_stopped_stacks', { mode: 'boolean' }).notNull().default(false),
 	theme: text('theme').notNull().default('system'),
+	locale: text('locale').notNull().default('auto'), // 'auto' | 'de' | 'en'
 	createdAt: integer('created_at', { mode: 'timestamp' })
 		.notNull()
 		.$defaultFn(() => new Date())

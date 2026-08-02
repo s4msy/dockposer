@@ -2,7 +2,10 @@
 	import type { ActionData } from './$types';
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import { translator } from '$lib/i18n';
 	let { form }: { form: ActionData } = $props();
+	const t = $derived(translator(page.data.locale ?? 'en'));
 	let passkeyError = $state('');
 	let passkeyBusy = $state(false);
 
@@ -22,14 +25,14 @@
 			await goto('/', { invalidateAll: true });
 		} catch (e) {
 			// Abbruch durch den User ist kein Fehler
-			if (!String(e).includes('NotAllowedError')) passkeyError = `Passkey-Anmeldung fehlgeschlagen: ${e}`;
+			if (!String(e).includes('NotAllowedError')) passkeyError = t('login.passkeyFailed', { error: String(e) });
 		} finally {
 			passkeyBusy = false;
 		}
 	}
 </script>
 
-<h1>Anmelden</h1>
+<h1>{t('login.title')}</h1>
 
 {#if form?.error}
 	<div class="alert-error" role="alert">{form.error}</div>
@@ -37,22 +40,22 @@
 
 <!-- reset:false — beim TOTP-Schritt bleiben Benutzername und Passwort erhalten -->
 <form method="POST" class="card" use:enhance={() => async ({ update }) => update({ reset: false })}>
-	<label for="username">Benutzername</label>
+	<label for="username">{t('login.username')}</label>
 	<input id="username" name="username" autocomplete="username" required />
 
-	<label for="password">Passwort</label>
+	<label for="password">{t('login.password')}</label>
 	<input id="password" name="password" type="password" autocomplete="current-password" required />
 
 	{#if form?.needTotp}
-		<label for="totp">TOTP-Code</label>
+		<label for="totp">{t('login.totp')}</label>
 		<!-- svelte-ignore a11y_autofocus — das Feld erscheint gerade erst, Fokus ist hier erwartbar -->
 		<input id="totp" name="totp" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" autofocus />
 	{/if}
 
-	<button type="submit">Anmelden</button>
+	<button type="submit">{t('login.submit')}</button>
 </form>
 
 {#if passkeyError}<div class="alert-error" role="alert">{passkeyError}</div>{/if}
 <button onclick={loginWithPasskey} disabled={passkeyBusy} style="background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);">
-	🔑 Mit Passkey anmelden
+	🔑 {t('login.passkey')}
 </button>

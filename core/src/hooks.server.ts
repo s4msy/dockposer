@@ -1,6 +1,7 @@
 import type { Handle, ServerInit } from '@sveltejs/kit';
 import { building } from '$app/environment';
 import { validateSession } from '$lib/server/auth';
+import { isLocale, localeFromHeader } from '$lib/i18n';
 
 export const init: ServerInit = async () => {
 	if (building) return;
@@ -28,6 +29,11 @@ const META_COLORS: Record<string, string> = {
 
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.user = await validateSession(event.cookies);
+	// Sprache: Benutzereinstellung, sonst Accept-Language des Browsers
+	const pref = event.locals.user?.locale ?? 'auto';
+	event.locals.locale =
+		pref !== 'auto' && isLocale(pref) ? pref : localeFromHeader(event.request.headers.get('accept-language'));
+
 	const theme = event.locals.user?.theme ?? 'system';
 	// Theme serverseitig ins HTML schreiben — sonst blitzt beim Laden die
 	// Standardpalette auf, bevor die Einstellung greift.
@@ -35,6 +41,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		transformPageChunk: ({ html }) =>
 			html
 				.replace('%dockposer.theme%', theme)
+				.replace('%dockposer.lang%', event.locals.locale)
 				.replace('%dockposer.metatheme%', META_COLORS[theme] ?? '#1a1614')
 	});
 };

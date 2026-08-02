@@ -4,6 +4,7 @@ import { db } from '$lib/server/db';
 import { users } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { createSession, rateLimit, verifyPassword, verifyTotp } from '$lib/server/auth';
+import { translator } from '$lib/i18n';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	if (locals.user) redirect(303, '/');
@@ -13,10 +14,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-	default: async ({ request, cookies, getClientAddress }) => {
+	default: async ({ request, cookies, getClientAddress, locals }) => {
+		const t = translator(locals.locale);
 		const ip = getClientAddress();
 		if (!rateLimit(`login:${ip}`, 10, 60_000)) {
-			return fail(429, { error: 'Zu viele Versuche. Kurz warten.' });
+			return fail(429, { error: t('login.rateLimited') });
 		}
 		const form = await request.formData();
 		const username = String(form.get('username') ?? '').trim();
@@ -25,12 +27,12 @@ export const actions: Actions = {
 
 		const [user] = await db.select().from(users).where(eq(users.username, username));
 		if (!user || !(await verifyPassword(password, user.passwordHash))) {
-			return fail(400, { error: 'Login fehlgeschlagen.', username });
+			return fail(400, { error: t('login.failed'), username });
 		}
 		if (user.totpEnabled && user.totpSecret) {
 			if (!totpCode) return fail(400, { needTotp: true, username });
 			if (!verifyTotp(user.totpSecret, totpCode)) {
-				return fail(400, { error: 'TOTP-Code ungültig.', needTotp: true, username });
+				return fail(400, { error: t('login.totpInvalid'), needTotp: true, username });
 			}
 		}
 		await createSession(cookies, user.id, { userAgent: request.headers.get('user-agent') ?? undefined, ip });

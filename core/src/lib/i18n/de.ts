@@ -1,0 +1,76 @@
+// Quellsprache. Neue Schlüssel hier zuerst — en.ts spiegelt die Struktur.
+export const de = {
+	'common.save': 'Speichern',
+	'common.cancel': 'Abbrechen',
+	'common.delete': 'Löschen',
+	'common.remove': 'Entfernen',
+	'common.test': 'Testen',
+	'common.edit': 'Bearbeiten',
+	'common.close': 'Schließen',
+	'common.add': 'Hinzufügen',
+	'common.back': 'Zurück',
+	'common.optional': 'optional',
+	'common.never': 'nie',
+
+	'nav.overview': 'Übersicht',
+	'nav.alerts': 'Alerts',
+	'nav.settings': 'Einstellungen',
+
+	'login.title': 'Anmelden',
+	'login.username': 'Benutzername',
+	'login.password': 'Passwort',
+	'login.totp': 'TOTP-Code',
+	'login.submit': 'Anmelden',
+	'login.passkey': 'Mit Passkey anmelden',
+	'login.failed': 'Login fehlgeschlagen.',
+	'login.totpInvalid': 'TOTP-Code ungültig.',
+	'login.rateLimited': 'Zu viele Versuche. Kurz warten.',
+	'login.passkeyFailed': 'Passkey-Anmeldung fehlgeschlagen: {error}',
+
+	'setup.title': 'Ersteinrichtung',
+	'setup.intro': 'Willkommen bei Dockposer. Lege den Admin-Account an.',
+	'setup.passwordLabel': 'Passwort (min. 12 Zeichen)',
+	'setup.create': 'Account anlegen',
+	'setup.usernameShort': 'Benutzername zu kurz.',
+	'setup.passwordShort': 'Passwort: mindestens 12 Zeichen.',
+
+	'overview.noServers': 'Noch keine Server registriert.',
+	'overview.addFirst': 'Ersten Server hinzufügen',
+	'overview.newStack': '+ Stack',
+	'overview.noStacks': 'Keine Stacks in diesem Ordner.',
+	'overview.hiddenStacks': '{count} gestoppte Stacks ausgeblendet',
+	'overview.hiddenStack': '{count} gestoppter Stack ausgeblendet',
+	'overview.showAgain': 'einblenden',
+	'overview.unmanaged': '{count} Container außerhalb von {path}',
+	'overview.unmanagedHint':
+		'Dockposer verwaltet diese nicht. Zum Aufnehmen: compose-Datei nach {path} verschieben und dort neu starten — oder per SSH weiterpflegen.',
+	'overview.standalone': 'einzeln gestartet (kein Compose)',
+	'overview.externalStack': 'Stack „{project}" aus {dir}',
+	'overview.externalStackNoDir': 'Stack „{project}" (Pfad unbekannt)',
+
+	'alerts.title': 'Alerts',
+	'alerts.none': 'Keine offenen Alerts.',
+	'alerts.ack': 'Gesehen',
+	'alerts.acked': 'gesehen',
+	'alerts.resolve': 'Erledigt',
+	'alerts.recentlyResolved': 'Kürzlich gelöst',
+
+	'settings.title': 'Einstellungen',
+	'settings.account': 'Account',
+	'settings.loggedInAs': 'Angemeldet als {name}',
+	'settings.logout': 'Abmelden',
+	'settings.appearance': 'Erscheinungsbild',
+	'settings.language': 'Sprache',
+	'settings.languageAuto': 'Automatisch (Browser)',
+	'settings.display': 'Anzeige',
+	'settings.hideStoppedOn': '✓ Gestoppte Stacks ausgeblendet',
+	'settings.hideStoppedOff': 'Gestoppte Stacks einblenden',
+	'settings.hideStoppedHint':
+		'Blendet Stacks aus, von denen aktuell kein Container läuft — der Ordner bleibt unangetastet. Die Übersicht zeigt weiterhin an, wie viele ausgeblendet sind.',
+	'settings.servers': 'Server',
+	'settings.manageServers': 'Server verwalten',
+	'settings.gitBackend': 'Git-Backend',
+	'settings.registries': 'Private Registries'
+} as const;
+
+export type MessageKey = keyof typeof de;

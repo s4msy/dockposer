@@ -1,7 +1,9 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/state';
+	import { translator } from '$lib/i18n';
 	let { children } = $props();
+	const t = $derived(translator(page.data.locale ?? 'en'));
 	const showNav = $derived(!['/login', '/setup'].includes(page.url.pathname));
 
 	$effect(() => {
@@ -26,12 +28,12 @@
 
 {#if showNav}
 	<nav>
-		<a href="/" aria-current={page.url.pathname === '/' ? 'page' : undefined}>Übersicht</a>
+		<a href="/" aria-current={page.url.pathname === '/' ? 'page' : undefined}>{t('nav.overview')}</a>
 		<a href="/alerts" aria-current={page.url.pathname.startsWith('/alerts') ? 'page' : undefined}>
-			Alerts
+			{t('nav.alerts')}
 			{#if page.data.openAlerts > 0}<span class="badge">{page.data.openAlerts}</span>{/if}
 		</a>
-		<a href="/settings" aria-current={page.url.pathname.startsWith('/settings') ? 'page' : undefined}>Einstellungen</a>
+		<a href="/settings" aria-current={page.url.pathname.startsWith('/settings') ? 'page' : undefined}>{t('nav.settings')}</a>
 	</nav>
 {/if}
 

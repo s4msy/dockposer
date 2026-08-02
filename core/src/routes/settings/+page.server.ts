@@ -9,6 +9,8 @@ import { generateTotpSecret, verifyTotp, verifyPassword } from '$lib/server/auth
 import { pushSubscriptions, webauthnCredentials } from '$lib/server/db/schema';
 import { and } from 'drizzle-orm';
 
+const LOCALE_OPTIONS = ['auto', 'de', 'en'];
+
 const THEMES = [
 	'system',
 	'dockposer-light',
@@ -38,6 +40,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		totpEnabled: user.totpEnabled,
 		hideStoppedStacks: user.hideStoppedStacks,
 		theme: user.theme,
+		localePref: user.locale,
 		vapidPublicKey,
 		webpushCount: subs.filter((s) => s.transport === 'webpush').length,
 		ntfyTopic: subs.find((s) => s.transport === 'ntfy')?.ntfyTopic ?? '',
@@ -64,6 +67,14 @@ export const actions: Actions = {
 		await db.update(users).set({ totpEnabled: true }).where(eq(users.id, user.id));
 		return { totpDone: true };
 	},
+	setLocale: async ({ locals, request }) => {
+		const user = requireUser(locals);
+		const locale = String((await request.formData()).get('locale') ?? '');
+		if (!LOCALE_OPTIONS.includes(locale)) return fail(400, { error: 'Unbekannte Sprache.' });
+		await db.update(users).set({ locale }).where(eq(users.id, user.id));
+		return { localeSaved: locale };
+	},
+
 	setTheme: async ({ locals, request }) => {
 		const user = requireUser(locals);
 		const theme = String((await request.formData()).get('theme') ?? '');

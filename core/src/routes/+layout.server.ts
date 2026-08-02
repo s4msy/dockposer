@@ -5,7 +5,7 @@ import { isNull } from 'drizzle-orm';
 import { count } from 'drizzle-orm';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
-	if (!locals.user) return { openAlerts: 0 };
+	if (!locals.user) return { openAlerts: 0, locale: locals.locale };
 	const [row] = await db.select({ n: count() }).from(alerts).where(isNull(alerts.resolvedAt));
-	return { openAlerts: row?.n ?? 0 };
+	return { openAlerts: row?.n ?? 0, locale: locals.locale };
 };

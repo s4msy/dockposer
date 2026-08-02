@@ -1,6 +1,9 @@
 <script lang="ts">
 	import type { PageData } from './$types';
+	import { page } from '$app/state';
+	import { translator } from '$lib/i18n';
 	let { data }: { data: PageData } = $props();
+	const t = $derived(translator(page.data.locale ?? 'en'));
 
 	const stacksFor = $derived((serverId: number) => data.stacks.filter((s) => s.serverId === serverId));
 </script>
@@ -9,8 +12,8 @@
 
 {#if data.servers.length === 0}
 	<div class="card">
-		<p>Noch keine Server registriert.</p>
-		<p><a href="/settings/servers">Ersten Server hinzufügen</a></p>
+		<p>{t('overview.noServers')}</p>
+		<p><a href="/settings/servers">{t('overview.addFirst')}</a></p>
 	</div>
 {/if}
 
@@ -20,7 +23,7 @@
 		<div class="server-head">
 			<span class="server-name">{server.name}</span>
 			<span class="dot {server.status === 'online' ? 'running' : 'stopped'}" aria-label={server.status}></span>
-			<a href="/servers/{server.id}/new-stack" style="text-decoration: none; margin-left: auto;">+ Stack</a>
+			<a href="/servers/{server.id}/new-stack" style="text-decoration: none; margin-left: auto;">{t('overview.newStack')}</a>
 		</div>
 		<ul style="list-style:none; padding:0; margin:var(--space-2) 0 0;">
 			{#each stacksFor(server.id) as stack (stack.id)}
@@ -42,13 +45,14 @@
 
 		{#if (data.hiddenPerServer[server.id] ?? 0) > 0}
 			<p style="margin: var(--space-2) 0 0; color: var(--color-text-dim); font-size: 0.85rem;">
-				{data.hiddenPerServer[server.id]} gestoppte
-				{data.hiddenPerServer[server.id] === 1 ? 'Stack' : 'Stacks'} ausgeblendet ·
-				<a href="/settings">einblenden</a>
+				{data.hiddenPerServer[server.id] === 1
+					? t('overview.hiddenStack', { count: 1 })
+					: t('overview.hiddenStacks', { count: data.hiddenPerServer[server.id] })} ·
+				<a href="/settings">{t('overview.showAgain')}</a>
 			</p>
 		{:else if stacksFor(server.id).length === 0 && !data.hideStopped}
 			<p style="margin: var(--space-2) 0 0; color: var(--color-text-dim); font-size: 0.85rem;">
-				Keine Stacks in diesem Ordner.
+				{t('overview.noStacks')}
 			</p>
 		{/if}
 
@@ -56,7 +60,7 @@
 			{@const list = data.unmanaged[server.id]}
 			<details style="margin-top: var(--space-2); border-top: 1px solid var(--color-border); padding-top: var(--space-2);">
 				<summary style="color: var(--color-text-dim); cursor: pointer; min-height: 44px; display: flex; align-items: center;">
-					<span style="color: var(--color-warn);">⚠</span>&nbsp;{list.length} Container außerhalb von {server.stacksPath}
+					<span style="color: var(--color-warn);">⚠</span>&nbsp;{t('overview.unmanaged', { count: list.length, path: server.stacksPath })}
 				</summary>
 				<ul style="list-style: none; padding: 0; margin: var(--space-2) 0 0;">
 					{#each list as c (c.name)}
@@ -65,19 +69,18 @@
 							<small style="display: block; color: var(--color-text-dim);">
 								{c.image}
 								{#if c.kind === 'standalone'}
-									· einzeln gestartet (kein Compose)
+									· {t('overview.standalone')}
 								{:else if c.working_dir}
-									· Stack „{c.project}" aus <code>{c.working_dir}</code>
+									· {t('overview.externalStack', { project: c.project ?? '', dir: c.working_dir })}
 								{:else}
-									· Stack „{c.project}" (Pfad unbekannt)
+									· {t('overview.externalStackNoDir', { project: c.project ?? '' })}
 								{/if}
 							</small>
 						</li>
 					{/each}
 				</ul>
 				<small style="display: block; margin-top: var(--space-2); color: var(--color-text-dim);">
-					Dockposer verwaltet diese nicht. Zum Aufnehmen: compose-Datei nach {server.stacksPath} verschieben
-					und dort neu starten — oder per SSH weiterpflegen.
+					{t('overview.unmanagedHint', { path: server.stacksPath })}
 				</small>
 			</details>
 		{/if}

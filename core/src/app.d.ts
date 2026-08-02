@@ -9,7 +9,9 @@ declare global {
 				totpEnabled: boolean;
 				hideStoppedStacks: boolean;
 				theme: string;
+				locale: string;
 			} | null;
+			locale: import('$lib/i18n').Locale;
 		}
 	}
 }

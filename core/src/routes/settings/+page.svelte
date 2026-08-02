@@ -2,7 +2,11 @@
 	import type { ActionData, PageData } from './$types';
 	import { invalidateAll } from '$app/navigation';
 	import { enhance } from '$app/forms';
+	import { page } from '$app/state';
+	import { invalidateAll as reload } from '$app/navigation';
+	import { translator, LOCALE_LABELS, LOCALES } from '$lib/i18n';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+	const t = $derived(translator(page.data.locale ?? 'en'));
 
 	$effect(() => {
 		if (form?.totpDone || form?.totpDisabled || form?.displaySaved) invalidateAll();
@@ -129,12 +133,12 @@
 	}
 </script>
 
-<h1>Einstellungen</h1>
+<h1>{t('settings.title')}</h1>
 
 <div class="card">
-	<strong>Account</strong>
-	<p>Angemeldet als <strong>{data.username}</strong></p>
-	<form method="POST" action="/logout"><button>Abmelden</button></form>
+	<strong>{t('settings.account')}</strong>
+	<p>{t('settings.loggedInAs', { name: data.username })}</p>
+	<form method="POST" action="/logout"><button>{t('settings.logout')}</button></form>
 </div>
 
 <div class="card">
@@ -178,7 +182,26 @@
 {/if}
 
 <div class="card">
-	<strong>Erscheinungsbild</strong>
+	<strong>{t('settings.language')}</strong>
+	<div style="display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2);">
+		{#each [{ id: 'auto', label: t('settings.languageAuto') }, ...LOCALES.map((l) => ({ id: l, label: LOCALE_LABELS[l] }))] as opt (opt.id)}
+			<form method="POST" action="?/setLocale" use:enhance={() => async ({ update }) => {
+				await update({ reset: false });
+				await reload();
+			}} style="width: auto;">
+				<input type="hidden" name="locale" value={opt.id} />
+				<button
+					style="width: auto; background: transparent; color: var(--color-text);
+						border: 2px solid {data.localePref === opt.id ? 'var(--color-primary)' : 'var(--color-border)'};
+						font-weight: {data.localePref === opt.id ? '700' : '400'};"
+				>{opt.label}</button>
+			</form>
+		{/each}
+	</div>
+</div>
+
+<div class="card">
+	<strong>{t('settings.appearance')}</strong>
 	<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-2); margin-top: var(--space-2);">
 		{#each THEMES as t (t.id)}
 			<form method="POST" action="?/setTheme" use:enhance={() => {
@@ -202,19 +225,18 @@
 </div>
 
 <div class="card">
-	<strong>Anzeige</strong>
+	<strong>{t('settings.display')}</strong>
 	<form method="POST" action="?/toggleHideStopped" use:enhance style="margin-top: var(--space-2);">
 		<button
 			style="background: transparent; border: 1px solid currentColor; color: {data.hideStoppedStacks
 				? 'var(--color-ok)'
 				: 'var(--color-text-dim)'};"
 		>
-			{data.hideStoppedStacks ? '✓ Gestoppte Stacks ausgeblendet' : 'Gestoppte Stacks einblenden'}
+			{data.hideStoppedStacks ? t('settings.hideStoppedOn') : t('settings.hideStoppedOff')}
 		</button>
 	</form>
 	<small style="color: var(--color-text-dim); display: block; margin-top: var(--space-2);">
-		Blendet Stacks aus, von denen aktuell kein Container läuft — der Ordner bleibt unangetastet.
-		Die Übersicht zeigt weiterhin an, wie viele ausgeblendet sind.
+		{t('settings.hideStoppedHint')}
 	</small>
 </div>
 
@@ -272,8 +294,8 @@
 </div>
 
 <div class="card">
-	<strong>Server</strong>
-	<p><a href="/settings/servers">Server verwalten →</a></p>
-	<p><a href="/settings/git">Git-Backend →</a></p>
-	<p><a href="/settings/registries">Private Registries →</a></p>
+	<strong>{t('settings.servers')}</strong>
+	<p><a href="/settings/servers">{t('settings.manageServers')} →</a></p>
+	<p><a href="/settings/git">{t('settings.gitBackend')} →</a></p>
+	<p><a href="/settings/registries">{t('settings.registries')} →</a></p>
 </div>

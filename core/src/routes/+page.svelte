@@ -14,8 +14,9 @@
 	</div>
 {/if}
 
+<div class="server-grid">
 {#each data.servers as server (server.id)}
-	<div class="card">
+	<div class="card" style="margin-bottom: 0;">
 		<div class="server-head">
 			<span class="server-name">{server.name}</span>
 			<span class="dot {server.status === 'online' ? 'running' : 'stopped'}" aria-label={server.status}></span>
@@ -82,3 +83,4 @@
 		{/if}
 	</div>
 {/each}
+</div>

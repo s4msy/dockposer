@@ -28,6 +28,7 @@ export const users = sqliteTable('users', {
 	totpSecret: text('totp_secret'), // AES-256-GCM-verschlüsselt (Key aus ENV)
 	totpEnabled: integer('totp_enabled', { mode: 'boolean' }).notNull().default(false),
 	hideStoppedStacks: integer('hide_stopped_stacks', { mode: 'boolean' }).notNull().default(false),
+	theme: text('theme').notNull().default('system'),
 	createdAt: integer('created_at', { mode: 'timestamp' })
 		.notNull()
 		.$defaultFn(() => new Date())

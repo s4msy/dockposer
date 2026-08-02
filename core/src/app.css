@@ -1,8 +1,24 @@
 /* Dockposer Design-System — Atkinson Hyperlegible, warme Töne, kein SaaS-Grau */
 @import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap');
 
+/* ── Design-Tokens ─────────────────────────────────────────────────────
+   Themes setzen nur Farben. Abstände, Radien und Typografie sind global.
+   Alle Paletten wurden auf WCAG-AA-Kontrast geprüft. */
 :root {
 	--font: 'Atkinson Hyperlegible', system-ui, sans-serif;
+	--space-1: 0.25rem;
+	--space-2: 0.5rem;
+	--space-3: 0.75rem;
+	--space-4: 1rem;
+	--space-6: 1.5rem;
+	--radius: 10px;
+	--content-narrow: 820px;
+	--content-wide: 1240px;
+}
+
+/* Dockposer hell — warme Töne, kein SaaS-Grau (Standard) */
+:root,
+[data-theme='dockposer-light'] {
 	--color-bg: #faf6f1;
 	--color-surface: #ffffff;
 	--color-text: #2b2320;
@@ -11,38 +27,144 @@
 	--color-primary-text: #ffffff;
 	--color-border: #e5dcd3;
 	--color-ok: #3d8b4f;
-	--color-warn: #c99418;
+	--color-warn: #8a6a15;
 	--color-crit: #c0392b;
-	--space-1: 0.25rem;
-	--space-2: 0.5rem;
-	--space-3: 0.75rem;
-	--space-4: 1rem;
-	--space-6: 1.5rem;
-	--radius: 10px;
+	--term-bg: #14100e;
+	--term-text: #d6cfc7;
+	--term-border: #2c2622;
+	--meta-theme: #faf6f1;
 }
 
-[data-theme='dark'] {
+[data-theme='dockposer-dark'] {
 	--color-bg: #1a1614;
 	--color-surface: #241f1c;
 	--color-text: #f0e9e2;
 	--color-text-dim: #a89a8f;
+	--color-primary: #e07a4a;
+	--color-primary-text: #1a1614;
 	--color-border: #3a322d;
+	--color-ok: #5cb872;
+	--color-warn: #d9b45b;
+	--color-crit: #e8837a;
+	--term-bg: #14100e;
+	--term-text: #d6cfc7;
+	--term-border: #2c2622;
+	--meta-theme: #1a1614;
 }
 
+[data-theme='catppuccin-mocha'] {
+	--color-bg: #1e1e2e;
+	--color-surface: #313244;
+	--color-text: #cdd6f4;
+	--color-text-dim: #a6adc8;
+	--color-primary: #cba6f7;
+	--color-primary-text: #1e1e2e;
+	--color-border: #45475a;
+	--color-ok: #a6e3a1;
+	--color-warn: #f9e2af;
+	--color-crit: #f38ba8;
+	--term-bg: #181825;
+	--term-text: #cdd6f4;
+	--term-border: #45475a;
+	--meta-theme: #1e1e2e;
+}
+
+[data-theme='catppuccin-latte'] {
+	--color-bg: #eff1f5;
+	--color-surface: #ffffff;
+	--color-text: #4c4f69;
+	--color-text-dim: #6c6f85;
+	--color-primary: #8839ef;
+	--color-primary-text: #ffffff;
+	--color-border: #ccd0da;
+	--color-ok: #40a02b;
+	--color-warn: #a06a0d;
+	--color-crit: #d20f39;
+	--term-bg: #1e1e2e;
+	--term-text: #cdd6f4;
+	--term-border: #45475a;
+	--meta-theme: #eff1f5;
+}
+
+[data-theme='nord'] {
+	--color-bg: #2e3440;
+	--color-surface: #3b4252;
+	--color-text: #eceff4;
+	--color-text-dim: #b8c1d1;
+	--color-primary: #88c0d0;
+	--color-primary-text: #2e3440;
+	--color-border: #4c566a;
+	--color-ok: #a3be8c;
+	--color-warn: #ebcb8b;
+	--color-crit: #d08a92;
+	--term-bg: #242933;
+	--term-text: #d8dee9;
+	--term-border: #434c5e;
+	--meta-theme: #2e3440;
+}
+
+[data-theme='dracula'] {
+	--color-bg: #282a36;
+	--color-surface: #343746;
+	--color-text: #f8f8f2;
+	--color-text-dim: #a3aed6;
+	--color-primary: #bd93f9;
+	--color-primary-text: #282a36;
+	--color-border: #44475a;
+	--color-ok: #50fa7b;
+	--color-warn: #f1fa8c;
+	--color-crit: #ff6e6e;
+	--term-bg: #21222c;
+	--term-text: #f8f8f2;
+	--term-border: #44475a;
+	--meta-theme: #282a36;
+}
+
+[data-theme='gruvbox-dark'] {
+	--color-bg: #282828;
+	--color-surface: #3c3836;
+	--color-text: #ebdbb2;
+	--color-text-dim: #bdae93;
+	--color-primary: #fe8019;
+	--color-primary-text: #282828;
+	--color-border: #504945;
+	--color-ok: #b8bb26;
+	--color-warn: #fabd2f;
+	--color-crit: #fb4934;
+	--term-bg: #1d2021;
+	--term-text: #ebdbb2;
+	--term-border: #504945;
+	--meta-theme: #282828;
+}
+
+/* „system": folgt der Systemeinstellung zwischen den Dockposer-Paletten */
 @media (prefers-color-scheme: dark) {
-	:root:not([data-theme='light']) {
+	[data-theme='system'] {
 		--color-bg: #1a1614;
 		--color-surface: #241f1c;
 		--color-text: #f0e9e2;
 		--color-text-dim: #a89a8f;
+		--color-primary: #e07a4a;
+		--color-primary-text: #1a1614;
 		--color-border: #3a322d;
+		--color-ok: #5cb872;
+		--color-warn: #d9b45b;
+		--color-crit: #e8837a;
+		--meta-theme: #1a1614;
 	}
 }
 
 * { box-sizing: border-box; }
 html { font-family: var(--font); background: var(--color-bg); color: var(--color-text); }
 body { margin: 0; min-height: 100dvh; }
-main { max-width: 640px; margin: 0 auto; padding: var(--space-4); padding-bottom: calc(76px + env(safe-area-inset-bottom)); /* Platz für die fixe Bottom-Nav */ }
+main {
+	max-width: var(--content-narrow);
+	margin: 0 auto;
+	padding: var(--space-4);
+	padding-bottom: calc(76px + env(safe-area-inset-bottom)); /* Platz für die fixe Bottom-Nav */
+}
+/* Übersicht darf den Platz nutzen; Formularseiten bleiben lesefreundlich schmal */
+main.wide { max-width: var(--content-wide); }
 
 h1 { font-size: 1.4rem; margin: var(--space-4) 0 var(--space-2); }
 a { color: var(--color-primary); }
@@ -119,9 +241,9 @@ label { display: block; margin-bottom: var(--space-1); color: var(--color-text-d
 
 /* Konsolen-Ausgabe im Terminal-Look — reine Optik, kein PTY, kein xterm.js */
 .term {
-	background: #14100e;
-	color: #d6cfc7;
-	border: 1px solid #2c2622;
+	background: var(--term-bg);
+	color: var(--term-text);
+	border: 1px solid var(--term-border);
 	border-radius: var(--radius);
 	padding: var(--space-3) var(--space-4);
 	margin-bottom: var(--space-3);
@@ -141,3 +263,38 @@ label { display: block; margin-bottom: var(--space-1); color: var(--color-text-d
 
 /* Läuft, aber Healthcheck schlägt an — bewusst nicht grün */
 .dot.unhealthy { background: var(--color-warn); }
+
+/* ── Breite Bildschirme: Platz nutzen statt Schlauch ──────────────────── */
+/* Server-Karten nebeneinander, sobald genug Platz da ist (auch Handy quer) */
+.server-grid {
+	display: grid;
+	gap: var(--space-3);
+	grid-template-columns: 1fr;
+	align-items: start;
+}
+@media (min-width: 720px) {
+	.server-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+}
+
+/* Die fixe Nav soll auf breiten Schirmen nicht über die ganze Breite laufen */
+@media (min-width: 720px) {
+	nav > :global(*) { max-width: none; }
+}
+
+/* Eingabefelder in breiten Karten nicht endlos ziehen */
+@media (min-width: 720px) {
+	input[type='text'],
+	input[type='url'],
+	input[type='password'],
+	input:not([type]) {
+		max-width: 640px;
+	}
+	button:not([style*='width: auto']) { max-width: 420px; }
+}
+
+/* Im Querformat auf niedrigen Schirmen die vertikalen Abstände straffen */
+@media (max-height: 500px) and (orientation: landscape) {
+	h1 { margin: var(--space-2) 0; font-size: 1.2rem; }
+	.card { padding: var(--space-3); margin-bottom: var(--space-2); }
+	.term { max-height: 60dvh; }
+}

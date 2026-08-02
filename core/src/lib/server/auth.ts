@@ -58,7 +58,8 @@ export async function validateSession(cookies: Cookies): Promise<App.Locals['use
 				id: users.id,
 				username: users.username,
 				totpEnabled: users.totpEnabled,
-				hideStoppedStacks: users.hideStoppedStacks
+				hideStoppedStacks: users.hideStoppedStacks,
+				theme: users.theme
 			})
 			.from(sessions)
 			.innerJoin(users, eq(sessions.userId, users.id))

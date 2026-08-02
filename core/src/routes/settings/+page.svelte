@@ -56,6 +56,22 @@
 		}
 	}
 
+	// Theme sofort anwenden — das <html data-theme> wird sonst erst beim
+	// nächsten vollen Seitenladen serverseitig neu gesetzt.
+	const THEMES = [
+		{ id: 'system', label: 'System', colors: ['#1a1614', '#e07a4a', '#f0e9e2'] },
+		{ id: 'dockposer-light', label: 'Dockposer hell', colors: ['#faf6f1', '#b4552d', '#2b2320'] },
+		{ id: 'dockposer-dark', label: 'Dockposer dunkel', colors: ['#1a1614', '#e07a4a', '#f0e9e2'] },
+		{ id: 'catppuccin-mocha', label: 'Catppuccin Mocha', colors: ['#1e1e2e', '#cba6f7', '#cdd6f4'] },
+		{ id: 'catppuccin-latte', label: 'Catppuccin Latte', colors: ['#eff1f5', '#8839ef', '#4c4f69'] },
+		{ id: 'nord', label: 'Nord', colors: ['#2e3440', '#88c0d0', '#eceff4'] },
+		{ id: 'dracula', label: 'Dracula', colors: ['#282a36', '#bd93f9', '#f8f8f2'] },
+		{ id: 'gruvbox-dark', label: 'Gruvbox Dark', colors: ['#282828', '#fe8019', '#ebdbb2'] }
+	];
+	function applyTheme(id: string) {
+		document.documentElement.dataset.theme = id;
+	}
+
 	let passkeyError = $state('');
 	let passkeyBusy = $state(false);
 
@@ -160,6 +176,30 @@
 		<button onclick={installApp}>Installieren</button>
 	</div>
 {/if}
+
+<div class="card">
+	<strong>Erscheinungsbild</strong>
+	<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-2); margin-top: var(--space-2);">
+		{#each THEMES as t (t.id)}
+			<form method="POST" action="?/setTheme" use:enhance={() => {
+				applyTheme(t.id);
+				return async ({ update }) => update({ reset: false });
+			}}>
+				<input type="hidden" name="theme" value={t.id} />
+				<button
+					style="width: 100%; max-width: none; display: flex; align-items: center; gap: var(--space-2);
+						background: transparent; border: 2px solid {data.theme === t.id ? 'var(--color-primary)' : 'var(--color-border)'};
+						color: var(--color-text); font-weight: {data.theme === t.id ? '700' : '400'};"
+				>
+					<span style="display: inline-flex; border-radius: 4px; overflow: hidden; border: 1px solid var(--color-border); flex-shrink: 0;">
+						{#each t.colors as c}<span style="width: 12px; height: 18px; background: {c};"></span>{/each}
+					</span>
+					<span style="font-size: 0.85rem; text-align: left;">{t.label}</span>
+				</button>
+			</form>
+		{/each}
+	</div>
+</div>
 
 <div class="card">
 	<strong>Anzeige</strong>

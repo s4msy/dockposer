@@ -9,6 +9,17 @@ import { generateTotpSecret, verifyTotp, verifyPassword } from '$lib/server/auth
 import { pushSubscriptions, webauthnCredentials } from '$lib/server/db/schema';
 import { and } from 'drizzle-orm';
 
+const THEMES = [
+	'system',
+	'dockposer-light',
+	'dockposer-dark',
+	'catppuccin-mocha',
+	'catppuccin-latte',
+	'nord',
+	'dracula',
+	'gruvbox-dark'
+];
+
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = requireUser(locals);
 	const { vapidPublicKey } = await import('$lib/server/push/vapid');
@@ -26,6 +37,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		username: user.username,
 		totpEnabled: user.totpEnabled,
 		hideStoppedStacks: user.hideStoppedStacks,
+		theme: user.theme,
 		vapidPublicKey,
 		webpushCount: subs.filter((s) => s.transport === 'webpush').length,
 		ntfyTopic: subs.find((s) => s.transport === 'ntfy')?.ntfyTopic ?? '',
@@ -52,6 +64,14 @@ export const actions: Actions = {
 		await db.update(users).set({ totpEnabled: true }).where(eq(users.id, user.id));
 		return { totpDone: true };
 	},
+	setTheme: async ({ locals, request }) => {
+		const user = requireUser(locals);
+		const theme = String((await request.formData()).get('theme') ?? '');
+		if (!THEMES.includes(theme)) return fail(400, { error: 'Unbekanntes Theme.' });
+		await db.update(users).set({ theme }).where(eq(users.id, user.id));
+		return { themeSaved: theme };
+	},
+
 	// Anzeige-Einstellung: Stacks ohne laufende Container ausblenden
 	toggleHideStopped: async ({ locals }) => {
 		const user = requireUser(locals);

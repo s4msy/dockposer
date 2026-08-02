@@ -20,7 +20,7 @@
 	});
 </script>
 
-<main>
+<main class={page.url.pathname === '/' ? 'wide' : ''}>
 	{@render children()}
 </main>
 

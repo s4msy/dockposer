@@ -39,6 +39,18 @@
 			{/each}
 		</ul>
 
+		{#if (data.hiddenPerServer[server.id] ?? 0) > 0}
+			<p style="margin: var(--space-2) 0 0; color: var(--color-text-dim); font-size: 0.85rem;">
+				{data.hiddenPerServer[server.id]} gestoppte
+				{data.hiddenPerServer[server.id] === 1 ? 'Stack' : 'Stacks'} ausgeblendet ·
+				<a href="/settings">einblenden</a>
+			</p>
+		{:else if stacksFor(server.id).length === 0 && !data.hideStopped}
+			<p style="margin: var(--space-2) 0 0; color: var(--color-text-dim); font-size: 0.85rem;">
+				Keine Stacks in diesem Ordner.
+			</p>
+		{/if}
+
 		{#if (data.unmanaged[server.id] ?? []).length > 0}
 			{@const list = data.unmanaged[server.id]}
 			<details style="margin-top: var(--space-2); border-top: 1px solid var(--color-border); padding-top: var(--space-2);">

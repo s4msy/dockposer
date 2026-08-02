@@ -25,6 +25,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	return {
 		username: user.username,
 		totpEnabled: user.totpEnabled,
+		hideStoppedStacks: user.hideStoppedStacks,
 		vapidPublicKey,
 		webpushCount: subs.filter((s) => s.transport === 'webpush').length,
 		ntfyTopic: subs.find((s) => s.transport === 'ntfy')?.ntfyTopic ?? '',
@@ -51,6 +52,20 @@ export const actions: Actions = {
 		await db.update(users).set({ totpEnabled: true }).where(eq(users.id, user.id));
 		return { totpDone: true };
 	},
+	// Anzeige-Einstellung: Stacks ohne laufende Container ausblenden
+	toggleHideStopped: async ({ locals }) => {
+		const user = requireUser(locals);
+		const [row] = await db
+			.select({ hideStoppedStacks: users.hideStoppedStacks })
+			.from(users)
+			.where(eq(users.id, user.id));
+		await db
+			.update(users)
+			.set({ hideStoppedStacks: !row?.hideStoppedStacks })
+			.where(eq(users.id, user.id));
+		return { displaySaved: true };
+	},
+
 	removePasskey: async ({ locals, request }) => {
 		const user = requireUser(locals);
 		const id = Number((await request.formData()).get('id'));

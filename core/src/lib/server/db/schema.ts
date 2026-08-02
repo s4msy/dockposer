@@ -27,6 +27,7 @@ export const users = sqliteTable('users', {
 	passwordHash: text('password_hash').notNull(),
 	totpSecret: text('totp_secret'), // AES-256-GCM-verschlüsselt (Key aus ENV)
 	totpEnabled: integer('totp_enabled', { mode: 'boolean' }).notNull().default(false),
+	hideStoppedStacks: integer('hide_stopped_stacks', { mode: 'boolean' }).notNull().default(false),
 	createdAt: integer('created_at', { mode: 'timestamp' })
 		.notNull()
 		.$defaultFn(() => new Date())
@@ -170,3 +171,4 @@ export const updateRuns = sqliteTable('update_runs', {
 		.$defaultFn(() => new Date()),
 	finishedAt: integer('finished_at', { mode: 'timestamp' })
 });
+

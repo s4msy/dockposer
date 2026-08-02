@@ -54,7 +54,12 @@ export async function validateSession(cookies: Cookies): Promise<App.Locals['use
 		const { payload } = await jwtVerify(jwt, secret());
 		const token = payload.t as string;
 		const [row] = await db
-			.select({ id: users.id, username: users.username, totpEnabled: users.totpEnabled })
+			.select({
+				id: users.id,
+				username: users.username,
+				totpEnabled: users.totpEnabled,
+				hideStoppedStacks: users.hideStoppedStacks
+			})
 			.from(sessions)
 			.innerJoin(users, eq(sessions.userId, users.id))
 			.where(and(eq(sessions.tokenHash, sha256(token)), gt(sessions.expiresAt, new Date())));

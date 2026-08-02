@@ -5,7 +5,7 @@
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	$effect(() => {
-		if (form?.totpDone || form?.totpDisabled) invalidateAll();
+		if (form?.totpDone || form?.totpDisabled || form?.displaySaved) invalidateAll();
 	});
 
 	let pushState = $state<'unknown' | 'unsupported' | 'off' | 'on' | 'busy'>('unknown');
@@ -160,6 +160,23 @@
 		<button onclick={installApp}>Installieren</button>
 	</div>
 {/if}
+
+<div class="card">
+	<strong>Anzeige</strong>
+	<form method="POST" action="?/toggleHideStopped" use:enhance style="margin-top: var(--space-2);">
+		<button
+			style="background: transparent; border: 1px solid currentColor; color: {data.hideStoppedStacks
+				? 'var(--color-ok)'
+				: 'var(--color-text-dim)'};"
+		>
+			{data.hideStoppedStacks ? '✓ Gestoppte Stacks ausgeblendet' : 'Gestoppte Stacks einblenden'}
+		</button>
+	</form>
+	<small style="color: var(--color-text-dim); display: block; margin-top: var(--space-2);">
+		Blendet Stacks aus, von denen aktuell kein Container läuft — der Ordner bleibt unangetastet.
+		Die Übersicht zeigt weiterhin an, wie viele ausgeblendet sind.
+	</small>
+</div>
 
 <div class="card">
 	<strong>Passkeys</strong>

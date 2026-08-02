@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `hide_stopped_stacks` integer DEFAULT false NOT NULL;

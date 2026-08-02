@@ -7,7 +7,7 @@ import { fetchUnmanaged } from '$lib/server/agents/client';
 import { decrypt } from '$lib/server/crypto';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	requireUser(locals);
+	const user = requireUser(locals);
 
 	const serverList = await db.select().from(serversTable);
 	// Sync und Unmanaged-Abfrage laufen nebeneinander statt nacheinander —
@@ -41,5 +41,17 @@ export const load: PageServerLoad = async ({ locals }) => {
 		}
 		return { ...s, updatesCount };
 	});
-	return { servers, stacks: stacksWithMeta, unmanaged };
+
+	// Optional: Stacks ausblenden, von denen nichts läuft (Ordner vorhanden,
+	// Container gestoppt oder weggeräumt). Nie stillschweigend — die Anzahl
+	// wird pro Server angezeigt, damit nichts unbemerkt verschwindet.
+	const hideStopped = user.hideStoppedStacks;
+	const hiddenPerServer: Record<number, number> = {};
+	const visibleStacks = stacksWithMeta.filter((s) => {
+		if (!hideStopped || s.state !== 'stopped') return true;
+		hiddenPerServer[s.serverId] = (hiddenPerServer[s.serverId] ?? 0) + 1;
+		return false;
+	});
+
+	return { servers, stacks: visibleStacks, unmanaged, hiddenPerServer, hideStopped };
 };

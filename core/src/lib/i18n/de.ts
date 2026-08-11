@@ -282,6 +282,9 @@ export const de = {
 	'alertType.agent_offline': 'Agent nicht erreichbar',
 	'common.on': 'an',
 	'common.off': 'aus',
+	'stack.driftTitle': 'Läuft nicht wie in der Datei definiert',
+	'stack.driftHint': 'Die laufenden Container wurden mit einer anderen Konfiguration gestartet als die aktuellen Dateien ergeben — typisch nach Änderungen, die noch nicht angewendet wurden. „up -d" gleicht den Stack an die Dateien an.',
+	'overview.drift': 'Drift',
 } as const;
 
 export type MessageKey = keyof typeof de;

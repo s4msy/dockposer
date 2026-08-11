@@ -138,7 +138,7 @@ func handleStacks(w http.ResponseWriter, r *http.Request) {
 	}
 	// EIN docker-ps-Aufruf für alle Stacks statt zwei compose-Aufrufe pro Stack.
 	// Bei 40 Stacks spart das ~80 Prozessstarts pro Übersichts-Refresh.
-	live := collectLiveContainers(r.Context())
+	liveByDir, liveByProject := collectLiveContainers(r.Context())
 
 	result := []stackInfo{}
 	for _, e := range entries {
@@ -153,16 +153,21 @@ func handleStacks(w http.ResponseWriter, r *http.Request) {
 		hash := hashComposeFiles(dir)
 		info := stackInfo{Name: e.Name(), Path: dir, ComposeHash: hash, State: "unknown"}
 
-		// Service-Anzahl ist teuer (compose config) und ändert sich nur mit der
-		// Datei → über den Hash cachen.
-		info.ServicesTotal = serviceCount(r.Context(), dir, hash)
+		// Erwartete Service-Hashes (teuer) über den Datei-Hash cachen
+		expected := serviceHashes(r.Context(), dir, hash)
+		info.ServicesTotal = len(expected)
 
-		if l, ok := live[dir]; ok {
+		l, ok := liveByDir[dir]
+		if !ok {
+			l, ok = liveByProject[projectNameFor(e.Name())]
+		}
+		if ok {
 			info.ServicesRunning = l.running
 			info.ServicesUnhealthy = l.unhealthy
 			if l.running > info.ServicesTotal {
 				info.ServicesTotal = l.running // Replicas o. Ä. — nie "5/4" anzeigen
 			}
+			info.Drift = hasDrift(expected, l.hashes)
 		}
 		switch {
 		case info.ServicesTotal == 0:
@@ -182,68 +187,150 @@ func handleStacks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, result)
 }
 
-type liveCounts struct{ running, unhealthy int }
+type liveCounts struct {
+	running, unhealthy int
+	// Service-Name → config-hash der LAUFENDEN Container. Grundlage der
+	// Drift-Erkennung: weicht dieser Wert von dem ab, was die aktuellen
+	// Dateien ergeben, läuft der Stack anders als definiert.
+	hashes map[string]string
+}
 
 // collectLiveContainers gruppiert alle Compose-Container nach ihrem
 // Arbeitsverzeichnis — das ist exakt der Stack-Ordner.
-func collectLiveContainers(ctx context.Context) map[string]*liveCounts {
-	byDir := map[string]*liveCounts{}
+func collectLiveContainers(ctx context.Context) (byDir, byProject map[string]*liveCounts) {
+	byDir = map[string]*liveCounts{}
+	byProject = map[string]*liveCounts{}
 	out, err := run(ctx, "", 20*time.Second, "docker", "ps",
 		"--filter", "label=com.docker.compose.project",
-		"--format", "{{.Label \"com.docker.compose.project.working_dir\"}}\t{{.State}}\t{{.Status}}")
+		"--format", strings.Join([]string{
+			`{{.Label "com.docker.compose.project.working_dir"}}`,
+			`{{.Label "com.docker.compose.project"}}`,
+			`{{.Label "com.docker.compose.service"}}`,
+			`{{.Label "com.docker.compose.config-hash"}}`,
+			`{{.State}}`,
+			`{{.Status}}`,
+		}, "\t"))
 	if err != nil {
-		return byDir
+		return byDir, byProject
 	}
-	for _, line := range nonEmptyLines(out) {
-		cols := strings.Split(line, "\t")
-		if len(cols) < 3 || cols[0] == "" {
-			continue
+	tally := func(m map[string]*liveCounts, key, service, cfgHash, state, status string) {
+		if key == "" {
+			return
 		}
-		dir := filepath.Clean(cols[0])
-		entry, ok := byDir[dir]
+		entry, ok := m[key]
 		if !ok {
-			entry = &liveCounts{}
-			byDir[dir] = entry
+			entry = &liveCounts{hashes: map[string]string{}}
+			m[key] = entry
 		}
-		if cols[1] == "running" {
+		if state == "running" {
 			entry.running++
+			if service != "" && cfgHash != "" {
+				entry.hashes[service] = cfgHash
+			}
 		}
 		// docker ps liefert Health nur im Status-Text: "Up 2 hours (unhealthy)"
-		if strings.Contains(cols[2], "(unhealthy)") {
+		if strings.Contains(status, "(unhealthy)") {
 			entry.unhealthy++
 		}
 	}
-	return byDir
+	for _, line := range nonEmptyLines(out) {
+		cols := strings.Split(line, "\t")
+		if len(cols) < 6 {
+			continue
+		}
+		workdir, project, service, cfgHash, state, status := cols[0], cols[1], cols[2], cols[3], cols[4], cols[5]
+		if workdir != "" {
+			tally(byDir, filepath.Clean(workdir), service, cfgHash, state, status)
+		}
+		// Zuordnung ersatzweise über den Projektnamen, falls das working_dir-Label
+		// fehlt (ältere Compose-Versionen setzen es nicht).
+		tally(byProject, project, service, cfgHash, state, status)
+	}
+	return byDir, byProject
 }
 
-// Service-Anzahl je compose-Hash cachen — compose config ist teuer.
+// Compose normalisiert Ordnernamen zu Projektnamen: klein, nur [a-z0-9_-]
+func projectNameFor(dirName string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(dirName) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// Erwartete Service-Hashes je Datei-Hash zwischenspeichern — `compose config`
+// ist teuer, das Ergebnis ändert sich aber nur mit den Dateien.
 var (
-	serviceCountCache = map[string]int{}
-	serviceCountMu    sync.Mutex
+	serviceHashCache = map[string]map[string]string{}
+	serviceHashMu    sync.Mutex
 )
 
-func serviceCount(ctx context.Context, dir, hash string) int {
-	if hash != "" {
-		serviceCountMu.Lock()
-		n, ok := serviceCountCache[hash]
-		serviceCountMu.Unlock()
+// serviceHashes liefert die von Compose erwarteten config-hashes je Service.
+// `compose config --hash="*"` gibt Name und Hash in einem Aufruf — ersetzt damit
+// das frühere `--services` (gleiche Anzahl Prozessstarts) und liefert zusätzlich
+// die Vergleichswerte für die Drift-Erkennung. Cache-Schlüssel ist der Datei-Hash
+// (inkl. .env), das Ergebnis ändert sich also nur bei echten Dateiänderungen.
+func serviceHashes(ctx context.Context, dir, cacheKey string) map[string]string {
+	if cacheKey != "" {
+		serviceHashMu.Lock()
+		cached, ok := serviceHashCache[cacheKey]
+		serviceHashMu.Unlock()
 		if ok {
-			return n
+			return cached
 		}
 	}
-	count := 0
-	if out, err := run(ctx, dir, 15*time.Second, "docker", "compose", "config", "--services"); err == nil {
-		count = len(nonEmptyLines(out))
-	}
-	if hash != "" && count > 0 {
-		serviceCountMu.Lock()
-		if len(serviceCountCache) > 500 {
-			serviceCountCache = map[string]int{} // simpler Deckel gegen unbegrenztes Wachstum
+	result := map[string]string{}
+	out, err := run(ctx, dir, 20*time.Second, "docker", "compose", "config", "--hash=*")
+	if err == nil {
+		for _, line := range nonEmptyLines(out) {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				result[parts[0]] = parts[len(parts)-1]
+			}
 		}
-		serviceCountCache[hash] = count
-		serviceCountMu.Unlock()
 	}
-	return count
+	// Rückfall: Kennt die Compose-Version --hash nicht, bleibt wenigstens die
+	// Service-Anzahl korrekt (leerer Hash ⇒ dieser Service wird beim
+	// Drift-Vergleich übersprungen, statt fälschlich Drift zu melden).
+	if len(result) == 0 {
+		out, err := run(ctx, dir, 15*time.Second, "docker", "compose", "config", "--services")
+		if err != nil {
+			return result // ungültige compose-Datei — nichts erfinden
+		}
+		for _, name := range nonEmptyLines(out) {
+			result[strings.TrimSpace(name)] = ""
+		}
+	}
+	if cacheKey != "" && len(result) > 0 {
+		serviceHashMu.Lock()
+		if len(serviceHashCache) > 500 {
+			serviceHashCache = map[string]map[string]string{} // Deckel gegen Wachstum
+		}
+		serviceHashCache[cacheKey] = result
+		serviceHashMu.Unlock()
+	}
+	return result
+}
+
+// hasDrift vergleicht laufende Container mit dem, was die Dateien ergeben würden.
+// Konservativ: Ohne belastbare Daten auf beiden Seiten wird KEIN Drift gemeldet —
+// ein falsches Drift-Badge wäre schlimmer als ein fehlendes.
+func hasDrift(expected, actual map[string]string) bool {
+	if len(expected) == 0 || len(actual) == 0 {
+		return false
+	}
+	for service, actualHash := range actual {
+		expectedHash, known := expected[service]
+		if !known || expectedHash == "" || actualHash == "" {
+			continue // Service nicht mehr definiert oder Label fehlt → nicht bewertbar
+		}
+		if expectedHash != actualHash {
+			return true
+		}
+	}
+	return false
 }
 
 func handleStats(w http.ResponseWriter, r *http.Request) {
@@ -700,6 +787,11 @@ func composeFile(dir string) string {
 }
 
 // Hash über compose.yaml + Override-Dateien (sortiert, dateinamen-präfixiert)
+func fileExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && !st.IsDir()
+}
+
 func hashComposeFiles(dir string) string {
 	var files []string
 	if cf := composeFile(dir); cf != "" {
@@ -709,6 +801,11 @@ func hashComposeFiles(dir string) string {
 		if m, err := filepath.Glob(filepath.Join(dir, pat)); err == nil {
 			files = append(files, m...)
 		}
+	}
+	// .env fließt in die Interpolation ein und verändert damit die aufgelöste
+	// Konfiguration — für Drift-Erkennung und Cache-Invalidierung entscheidend.
+	if envPath := filepath.Join(dir, ".env"); fileExists(envPath) {
+		files = append(files, envPath)
 	}
 	sort.Strings(files)
 	h := sha256.New()

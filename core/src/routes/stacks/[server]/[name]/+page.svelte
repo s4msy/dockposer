@@ -213,6 +213,13 @@
 	<div class="alert-error" role="alert">{t('stack.agentOffline')}</div>
 {/if}
 
+{#if data.stack?.drift}
+	<div class="card" style="border-left: 4px solid var(--color-warn);" role="status">
+		<strong>{t('stack.driftTitle')}</strong>
+		<p style="margin: var(--space-1) 0 0; color: var(--color-text-dim);">{t('stack.driftHint')}</p>
+	</div>
+{/if}
+
 {#if data.compose?.pinned}
 	<div class="card" style="border-left: 4px solid var(--color-warn);" role="alert">
 		<strong>{t('stack.pinnedTitle')}</strong>

@@ -275,4 +275,7 @@ export const en: Record<MessageKey, string> = {
 	'alertType.agent_offline': 'Agent unreachable',
 	'common.on': 'on',
 	'common.off': 'off',
+	'stack.driftTitle': 'Not running as defined in the file',
+	'stack.driftHint': 'The running containers were started with a different configuration than the current files produce — typical after changes that have not been applied yet. Run “up -d” to bring the stack in line with the files.',
+	'overview.drift': 'Drift',
 };

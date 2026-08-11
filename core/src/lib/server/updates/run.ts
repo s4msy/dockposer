@@ -1,6 +1,6 @@
 import { db } from '$lib/server/db';
 import { servers, stacks, updateRuns } from '$lib/server/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, notInArray } from 'drizzle-orm';
 import { engine } from '$lib/server/alerts/engine';
 import { translator } from '$lib/i18n';
 
@@ -45,6 +45,19 @@ export async function recordUpdateRun(
 			startedAt,
 			finishedAt: new Date()
 		});
+		// Aufbewahrung begrenzen: pro Stack die letzten 50 Läufe. Ohne das wächst
+		// die Tabelle bei automatischen Updates unbegrenzt (inkl. Log-Auszügen).
+		const keep = await db
+			.select({ id: updateRuns.id })
+			.from(updateRuns)
+			.where(eq(updateRuns.stackId, stackRow.id))
+			.orderBy(desc(updateRuns.startedAt))
+			.limit(50);
+		if (keep.length === 50) {
+			await db.delete(updateRuns).where(
+				and(eq(updateRuns.stackId, stackRow.id), notInArray(updateRuns.id, keep.map((k) => k.id)))
+			);
+		}
 	}
 
 	if (!parsed || parsed.result === 'failed' || parsed.result === 'rolled_back') {

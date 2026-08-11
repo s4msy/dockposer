@@ -295,6 +295,58 @@
 	{#if form?.policySaved}<small role="status" style="color: var(--color-ok);">{t('stack.policySaved')}</small>{/if}
 </div>
 
+<details class="card">
+	<summary style="cursor: pointer; min-height: 44px; display: flex; align-items: center;">
+		<strong>{t('stack.history')}</strong>
+		{#if data.history.length > 0}
+			<small style="color: var(--color-text-dim); margin-left: var(--space-2);">({data.history.length})</small>
+		{/if}
+	</summary>
+
+	{#if data.history.length === 0}
+		<p style="color: var(--color-text-dim);">{t('stack.historyEmpty')}</p>
+	{:else}
+		<ul style="list-style: none; padding: 0; margin: var(--space-2) 0 0;">
+			{#each data.history as run (run.id)}
+				<li style="padding: var(--space-2) 0; border-top: 1px solid var(--color-border);">
+					<div style="display: flex; align-items: baseline; gap: var(--space-2);">
+						<span class="dot {run.result === 'success' ? 'running' : run.result === 'rolled_back' ? 'partial' : 'stopped'}"></span>
+						<span style="flex: 1;">
+							{run.result === 'success'
+								? t('stack.resultSuccess')
+								: run.result === 'rolled_back'
+									? t('stack.resultRolledBack')
+									: t('stack.resultFailed')}
+							<small style="color: var(--color-text-dim);">
+								· {run.trigger === 'policy' ? t('stack.triggerPolicy') : t('stack.triggerManual')}
+							</small>
+							<small style="display: block; color: var(--color-text-dim);">
+								{new Date(run.startedAt).toLocaleString(page.data.locale ?? 'en')}
+								{#if run.finishedAt}
+									· {t('stack.historyDuration', {
+										seconds: Math.max(0, Math.round((new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()) / 1000))
+									})}
+								{/if}
+							</small>
+							<small style="display: block; color: var(--color-text-dim);">
+								{run.changed.length > 0
+									? t('stack.historyChanged', { services: run.changed.join(', ') })
+									: t('stack.historyNoChange')}
+							</small>
+						</span>
+					</div>
+					{#if run.logExcerpt}
+						<details style="margin-top: var(--space-1);">
+							<summary><small>{t('stack.historyLog')}</small></summary>
+							<div class="term" style="max-height: 30dvh; margin-top: var(--space-2);">{run.logExcerpt}</div>
+						</details>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+	{/if}
+</details>
+
 {#if containers.length > 0}
 	<div class="card">
 		<strong>{t('stack.services')}</strong>

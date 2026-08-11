@@ -1,8 +1,8 @@
 import type { Actions, PageServerLoad } from './$types';
 import { error, fail } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
-import { servers, stacks } from '$lib/server/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { servers, stacks, updateRuns } from '$lib/server/db/schema';
+import { and, desc, eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
 import { translator } from '$lib/i18n';
 import { decrypt } from '$lib/server/crypto';
@@ -25,6 +25,45 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		.from(stacks)
 		.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
 
+	// Update-Historie aus dem Audit-Log (unabhängig davon, ob der Agent antwortet)
+	const runs = stack
+		? await db
+				.select({
+					id: updateRuns.id,
+					trigger: updateRuns.trigger,
+					result: updateRuns.result,
+					oldDigestsJson: updateRuns.oldDigestsJson,
+					newDigestsJson: updateRuns.newDigestsJson,
+					logExcerpt: updateRuns.logExcerpt,
+					startedAt: updateRuns.startedAt,
+					finishedAt: updateRuns.finishedAt
+				})
+				.from(updateRuns)
+				.where(eq(updateRuns.stackId, stack.id))
+				.orderBy(desc(updateRuns.startedAt))
+				.limit(15)
+		: [];
+	// Für die Anzeige interessiert nur, welche Services sich geändert haben
+	const history = runs.map((r) => {
+		let changed: string[] = [];
+		try {
+			const oldD: Record<string, string> = r.oldDigestsJson ? JSON.parse(r.oldDigestsJson) : {};
+			const newD: Record<string, string> = r.newDigestsJson ? JSON.parse(r.newDigestsJson) : {};
+			changed = Object.keys(newD).filter((svc) => oldD[svc] !== newD[svc]);
+		} catch {
+			/* alter Eintrag ohne Digest-Daten */
+		}
+		return {
+			id: r.id,
+			trigger: r.trigger,
+			result: r.result,
+			changed,
+			logExcerpt: r.logExcerpt,
+			startedAt: r.startedAt,
+			finishedAt: r.finishedAt
+		};
+	});
+
 	try {
 		const [compose, containers, editable] = await Promise.all([
 			fetchCompose(server.baseUrl, token, params.name),
@@ -44,6 +83,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			lastUpdateCheck: stack?.lastUpdateCheck ?? null,
 			updatePolicy: stack?.updatePolicy ?? 'manual',
 			gitTracking: stack?.gitTracking ?? false,
+			history,
 			agentOffline: false
 		};
 	} catch (e) {
@@ -61,6 +101,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			lastUpdateCheck: stack?.lastUpdateCheck ?? null,
 			updatePolicy: stack?.updatePolicy ?? 'manual',
 			gitTracking: stack?.gitTracking ?? false,
+			history,
 			agentOffline: true
 		};
 	}

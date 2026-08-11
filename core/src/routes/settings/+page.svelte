@@ -228,6 +228,22 @@
 </div>
 
 <div class="card">
+	<strong>{tr('settings.alertRules')}</strong>
+	<p style="color: var(--color-text-dim); margin: var(--space-1) 0 var(--space-2);">{tr('settings.alertRulesHint')}</p>
+	{#each data.rules as rule (rule.id)}
+		<form method="POST" action="?/toggleRule" use:enhance style="display: flex; align-items: center; gap: var(--space-2); border-top: 1px solid var(--color-border); padding: var(--space-2) 0;">
+			<input type="hidden" name="id" value={rule.id} />
+			<span style="flex: 1;">{tr(`alertType.${rule.type}` as never)}</span>
+			<button
+				aria-pressed={rule.enabled}
+				style="width: auto; min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent;
+					border: 1px solid currentColor; color: {rule.enabled ? 'var(--color-ok)' : 'var(--color-text-dim)'};"
+			>{rule.enabled ? '✓ ' + tr('common.on') : tr('common.off')}</button>
+		</form>
+	{/each}
+</div>
+
+<div class="card">
 	<strong>{tr('settings.display')}</strong>
 	<form method="POST" action="?/toggleHideStopped" use:enhance style="margin-top: var(--space-2);">
 		<button

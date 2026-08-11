@@ -7,10 +7,23 @@ import { eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
 import { generateTotpSecret, verifyTotp, verifyPassword } from '$lib/server/auth';
 import { translator } from '$lib/i18n';
-import { pushSubscriptions, webauthnCredentials } from '$lib/server/db/schema';
+import { alertRules, pushSubscriptions, webauthnCredentials } from '$lib/server/db/schema';
 import { and } from 'drizzle-orm';
 
 const LOCALE_OPTIONS = ['auto', 'de', 'en'];
+
+// Anzeigereihenfolge der Alarm-Regeln: wichtigste zuerst
+const ALERT_TYPE_ORDER = [
+	'crash_loop',
+	'container_exit',
+	'unhealthy',
+	'oom_kill',
+	'update_rolled_back',
+	'pull_failed',
+	'update_success',
+	'disk_space',
+	'agent_offline'
+] as const;
 
 const THEMES = [
 	'system',
@@ -27,6 +40,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const user = requireUser(locals);
 	const { vapidPublicKey } = await import('$lib/server/push/vapid');
 	const subs = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, user.id));
+	const ruleRows = await db.select().from(alertRules).where(eq(alertRules.scope, 'global'));
+	const rules = ALERT_TYPE_ORDER.flatMap((type) => {
+		const row = ruleRows.find((r) => r.type === type);
+		return row ? [{ id: row.id, type: row.type, enabled: row.enabled }] : [];
+	});
 	const passkeys = await db
 		.select({
 			id: webauthnCredentials.id,
@@ -41,6 +59,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		totpEnabled: user.totpEnabled,
 		hideStoppedStacks: user.hideStoppedStacks,
 		theme: user.theme,
+		rules,
 		localePref: user.locale,
 		vapidPublicKey,
 		webpushCount: subs.filter((s) => s.transport === 'webpush').length,
@@ -68,6 +87,15 @@ export const actions: Actions = {
 		await db.update(users).set({ totpEnabled: true }).where(eq(users.id, user.id));
 		return { totpDone: true };
 	},
+	toggleRule: async ({ locals, request }) => {
+		requireUser(locals);
+		const id = Number((await request.formData()).get('id'));
+		const [row] = await db.select().from(alertRules).where(eq(alertRules.id, id));
+		if (!row) return fail(404, { error: translator(locals.locale)('reg.notFound') });
+		await db.update(alertRules).set({ enabled: !row.enabled }).where(eq(alertRules.id, id));
+		return { ruleToggled: id };
+	},
+
 	setLocale: async ({ locals, request }) => {
 		const user = requireUser(locals);
 		const locale = String((await request.formData()).get('locale') ?? '');

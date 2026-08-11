@@ -268,6 +268,20 @@ export const de = {
 	'push.critical': 'Kritisch',
 	'push.warning': 'Warnung',
 	'push.info': 'Info',
+	'alert.updateSuccess': 'Update von {stack} erfolgreich — {count} Service(s) aktualisiert.',
+	'settings.alertRules': 'Alarm-Regeln',
+	'settings.alertRulesHint': 'Welche Ereignisse eine Benachrichtigung auslösen. Gilt für alle Server.',
+	'alertType.crash_loop': 'Crash-Loop (mehrfacher Neustart)',
+	'alertType.container_exit': 'Container unerwartet beendet',
+	'alertType.unhealthy': 'Healthcheck meldet unhealthy',
+	'alertType.oom_kill': 'Out of Memory',
+	'alertType.pull_failed': 'Pull fehlgeschlagen',
+	'alertType.update_rolled_back': 'Update fehlgeschlagen (Rollback)',
+	'alertType.update_success': 'Automatisches Update erfolgreich',
+	'alertType.disk_space': 'Wenig Speicherplatz',
+	'alertType.agent_offline': 'Agent nicht erreichbar',
+	'common.on': 'an',
+	'common.off': 'aus',
 } as const;
 
 export type MessageKey = keyof typeof de;

@@ -44,7 +44,8 @@ class AlertEngine {
 			{ type: 'agent_offline' },
 			{ type: 'disk_space', thresholdJson: JSON.stringify({ free_percent: 10 }) },
 			{ type: 'pull_failed' },
-			{ type: 'update_rolled_back' }
+			{ type: 'update_rolled_back' },
+			{ type: 'update_success' }
 		];
 		for (const def of defaults) {
 			const [existing] = await db.select({ id: alertRules.id }).from(alertRules)
@@ -161,6 +162,19 @@ class AlertEngine {
 		await this.resolve(serverId, stackName, ['pull_failed', 'update_rolled_back']);
 	}
 
+	/**
+	 * Erfolgreich abgeschlossenes Update melden — bewusst nur für Läufe der
+	 * Update-Policy. Manuelle Updates sieht man ja live in der Konsole; die
+	 * automatischen laufen unbeobachtet und sind genau die, von denen man
+	 * erfahren will. Ohne tatsächlich getauschte Images bleibt es still.
+	 */
+	async updateSucceeded(serverId: number, stackName: string, changedServices: number) {
+		if (changedServices < 1) return;
+		if (!(await this.rule('update_success'))?.enabled) return;
+		await this.fire('update_success', 'info', serverId, undefined, stackName,
+			'alert.updateSuccess', { stack: stackName, count: changedServices }, true);
+	}
+
 	// ── Server-Ebene: Agent offline / Disk ──
 	async agentOffline(serverId: number, serverName: string) {
 		if ((await this.rule('agent_offline'))?.enabled) {
@@ -189,7 +203,11 @@ class AlertEngine {
 	// ── DB-Schreiber mit Deduplizierung ──
 	private async fire(type: AlertType, severity: Severity, serverId: number,
 		project: string | undefined, container: string | undefined,
-		messageKey: MessageKey, params: Record<string, string | number> = {}) {
+		messageKey: MessageKey, params: Record<string, string | number> = {},
+		// transient: sofort als erledigt ablegen. Für reine Erfolgsmeldungen —
+		// sie sollen pushen und im Verlauf stehen, aber weder den Badge-Zähler
+		// hochtreiben noch (per Dedup) die nächste gleichartige Meldung blockieren.
+		transient = false) {
 		// Deutsch als gespeicherter Fallback; die Anzeige übersetzt über den Schlüssel.
 		const message = translator('de')(messageKey, params);
 		const conditions = [
@@ -218,7 +236,8 @@ class AlertEngine {
 		}
 		await db.insert(alerts).values({
 			ruleType: type, serverId, stackId, containerName: container, severity,
-			message, messageKey, messageParamsJson: JSON.stringify(params)
+			message, messageKey, messageParamsJson: JSON.stringify(params),
+			...(transient ? { resolvedAt: new Date() } : {})
 		});
 		notifyDispatchers({ type, severity, serverId, container, message, messageKey, params });
 	}

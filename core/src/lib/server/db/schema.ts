@@ -13,7 +13,8 @@ export const alertType = [
 	'pull_failed',
 	'update_rolled_back',
 	'disk_space',
-	'agent_offline'
+	'agent_offline',
+	'update_success'
 ] as const;
 export const alertSeverity = ['info', 'warning', 'critical'] as const;
 export const pushTransport = ['webpush', 'ntfy'] as const;

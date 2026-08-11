@@ -59,6 +59,13 @@ export async function recordUpdateRun(
 		await engine.updateProblem(serverId, stackName, kind, messageKey, { stack: stackName, reason: detail });
 	} else if (parsed.result === 'success') {
 		await engine.updateOk(serverId, stackName);
+		if (trigger === 'policy') {
+			// Nur Services zählen, deren Digest sich tatsächlich geändert hat
+			const oldD = parsed.old_digests ?? {};
+			const newD = parsed.new_digests ?? {};
+			const changed = Object.entries(newD).filter(([svc, digest]) => oldD[svc] !== digest).length;
+			await engine.updateSucceeded(serverId, stackName, changed);
+		}
 	}
 
 	// Feed direkt neu prüfen, damit erledigte Updates sofort verschwinden

@@ -167,7 +167,7 @@ func handleStacks(w http.ResponseWriter, r *http.Request) {
 			if l.running > info.ServicesTotal {
 				info.ServicesTotal = l.running // Replicas o. Ä. — nie "5/4" anzeigen
 			}
-			info.Drift = hasDrift(expected, l.hashes)
+			info.Drift = hasDrift(expected, l.hashes, newestComposeMtime(dir), l.oldestCreated)
 		}
 		switch {
 		case info.ServicesTotal == 0:
@@ -189,10 +189,12 @@ func handleStacks(w http.ResponseWriter, r *http.Request) {
 
 type liveCounts struct {
 	running, unhealthy int
-	// Service-Name → config-hash der LAUFENDEN Container. Grundlage der
-	// Drift-Erkennung: weicht dieser Wert von dem ab, was die aktuellen
-	// Dateien ergeben, läuft der Stack anders als definiert.
+	// Service-Name → config-hash der LAUFENDEN Container.
 	hashes map[string]string
+	// Älteste Container-Erstellung im Stack. Zusammen mit der Datei-Mtime das
+	// entscheidende Signal: Nur wenn die Dateien NACH dem Start geändert wurden,
+	// kann der laufende Stand überhaupt veraltet sein.
+	oldestCreated time.Time
 }
 
 // collectLiveContainers gruppiert alle Compose-Container nach ihrem
@@ -209,11 +211,12 @@ func collectLiveContainers(ctx context.Context) (byDir, byProject map[string]*li
 			`{{.Label "com.docker.compose.config-hash"}}`,
 			`{{.State}}`,
 			`{{.Status}}`,
+			`{{.CreatedAt}}`,
 		}, "\t"))
 	if err != nil {
 		return byDir, byProject
 	}
-	tally := func(m map[string]*liveCounts, key, service, cfgHash, state, status string) {
+	tally := func(m map[string]*liveCounts, key, service, cfgHash, state, status, created string) {
 		if key == "" {
 			return
 		}
@@ -227,6 +230,11 @@ func collectLiveContainers(ctx context.Context) (byDir, byProject map[string]*li
 			if service != "" && cfgHash != "" {
 				entry.hashes[service] = cfgHash
 			}
+			if t := parseDockerTime(created); !t.IsZero() {
+				if entry.oldestCreated.IsZero() || t.Before(entry.oldestCreated) {
+					entry.oldestCreated = t
+				}
+			}
 		}
 		// docker ps liefert Health nur im Status-Text: "Up 2 hours (unhealthy)"
 		if strings.Contains(status, "(unhealthy)") {
@@ -235,16 +243,17 @@ func collectLiveContainers(ctx context.Context) (byDir, byProject map[string]*li
 	}
 	for _, line := range nonEmptyLines(out) {
 		cols := strings.Split(line, "\t")
-		if len(cols) < 6 {
+		if len(cols) < 7 {
 			continue
 		}
-		workdir, project, service, cfgHash, state, status := cols[0], cols[1], cols[2], cols[3], cols[4], cols[5]
+		workdir, project, service, cfgHash, state, status, created :=
+			cols[0], cols[1], cols[2], cols[3], cols[4], cols[5], cols[6]
 		if workdir != "" {
-			tally(byDir, filepath.Clean(workdir), service, cfgHash, state, status)
+			tally(byDir, filepath.Clean(workdir), service, cfgHash, state, status, created)
 		}
 		// Zuordnung ersatzweise über den Projektnamen, falls das working_dir-Label
 		// fehlt (ältere Compose-Versionen setzen es nicht).
-		tally(byProject, project, service, cfgHash, state, status)
+		tally(byProject, project, service, cfgHash, state, status, created)
 	}
 	return byDir, byProject
 }
@@ -314,13 +323,65 @@ func serviceHashes(ctx context.Context, dir, cacheKey string) map[string]string 
 	return result
 }
 
-// hasDrift vergleicht laufende Container mit dem, was die Dateien ergeben würden.
-// Konservativ: Ohne belastbare Daten auf beiden Seiten wird KEIN Drift gemeldet —
-// ein falsches Drift-Badge wäre schlimmer als ein fehlendes.
-func hasDrift(expected, actual map[string]string) bool {
+// parseDockerTime liest das CreatedAt-Format von `docker ps`
+// ("2026-08-01 12:34:56 +0200 CEST").
+func parseDockerTime(v string) time.Time {
+	v = strings.TrimSpace(v)
+	for _, layout := range []string{"2006-01-02 15:04:05 -0700 MST", "2006-01-02 15:04:05 -0700", time.RFC3339} {
+		if t, err := time.Parse(layout, v); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+// newestComposeMtime: wann wurden die Stack-Dateien zuletzt geändert?
+func newestComposeMtime(dir string) time.Time {
+	var newest time.Time
+	var files []string
+	if cf := composeFile(dir); cf != "" {
+		files = append(files, cf)
+	}
+	for _, pat := range []string{"compose.override.y*ml", "docker-compose.override.y*ml"} {
+		if m, err := filepath.Glob(filepath.Join(dir, pat)); err == nil {
+			files = append(files, m...)
+		}
+	}
+	files = append(files, filepath.Join(dir, ".env"))
+	for _, f := range files {
+		if st, err := os.Stat(f); err == nil && st.ModTime().After(newest) {
+			newest = st.ModTime()
+		}
+	}
+	return newest
+}
+
+// hasDrift entscheidet, ob der laufende Stack von den Dateien abweicht.
+//
+// ZWEI Bedingungen müssen zutreffen — das ist bewusst so:
+//
+//  1. Die Dateien wurden NACH dem Start der Container geändert. Nur dann kann
+//     der laufende Stand überhaupt veraltet sein.
+//  2. Der config-hash weicht ab.
+//
+// Warum nicht nur (2)? Der config-hash wird von der Compose-Version berechnet,
+// die den Container gestartet hat. Nach einem Compose-Update unterscheiden sich
+// die Hashes bei UNVERÄNDERTEN Dateien — das würde bei jedem lange laufenden
+// Stack fälschlich Drift melden. Bedingung (1) schließt das aus, weil ein
+// Compose-Update die Datei-Mtime nicht anfasst.
+//
+// Warum nicht nur (1)? Ein bloßes `touch` oder ein Kommentar-Edit würde sonst
+// Drift melden, obwohl die aufgelöste Konfiguration identisch ist.
+func hasDrift(expected, actual map[string]string, fileMtime, containerCreated time.Time) bool {
 	if len(expected) == 0 || len(actual) == 0 {
 		return false
 	}
+	// (1) Zeitfenster: Dateien müssen jünger sein als der älteste laufende Container.
+	// Ohne verwertbare Zeitangaben lieber nichts melden.
+	if fileMtime.IsZero() || containerCreated.IsZero() || !fileMtime.After(containerCreated) {
+		return false
+	}
+	// (2) Inhaltlicher Vergleich
 	for service, actualHash := range actual {
 		expectedHash, known := expected[service]
 		if !known || expectedHash == "" || actualHash == "" {

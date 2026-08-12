@@ -207,3 +207,26 @@ export const putFile = (baseUrl: string, token: string, stack: string, name: str
 		{ method: 'PUT', body: content, headers: { 'Content-Type': 'text/plain' } },
 		20_000
 	);
+
+export interface AgentDriftDebug {
+	agent_version: string;
+	matched_by: string;
+	file_mtimes: Record<string, string>;
+	newest_file_mtime: string;
+	oldest_container: string;
+	files_newer: boolean;
+	expected_hashes: Record<string, string>;
+	actual_hashes: Record<string, string>;
+	drift: boolean;
+	drift_services: string[] | null;
+	reason: string;
+}
+
+export const fetchDriftDebug = (baseUrl: string, token: string, stack: string) =>
+	agentFetch<AgentDriftDebug>(
+		baseUrl,
+		token,
+		`/v1/stacks/${encodeURIComponent(stack)}/drift`,
+		{},
+		30_000
+	);

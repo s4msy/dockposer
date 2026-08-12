@@ -6,7 +6,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
 import { translator } from '$lib/i18n';
 import { decrypt } from '$lib/server/crypto';
-import { fetchCompose, fetchStackPs, putCompose, deleteStack, fetchEditableFiles, fetchFile, putFile, AgentError } from '$lib/server/agents/client';
+import { fetchCompose, fetchStackPs, putCompose, deleteStack, fetchEditableFiles, fetchFile, putFile, fetchDriftDebug, AgentError } from '$lib/server/agents/client';
 import { checkStackUpdates } from '$lib/server/updates/checker';
 import { redirect } from '@sveltejs/kit';
 
@@ -212,6 +212,23 @@ export const actions: Actions = {
 		} catch (e) {
 			const msg = e instanceof AgentError ? e.message : t('stack.saveFailed');
 			return fail(422, { fileError: msg, fileLoaded: true, fileName, fileExists: true, fileContent: content });
+		}
+	},
+
+	// Drift-Diagnose auf Knopfdruck — zeigt, worauf der Agent seine Entscheidung
+	// stützt, statt dass man per SSH mit Tokens hantieren muss.
+	driftDetails: async ({ locals, params }) => {
+		requireUser(locals);
+		const t = translator(locals.locale);
+		const server = await loadServer(params.server);
+		try {
+			const debug = await fetchDriftDebug(server.baseUrl, decrypt(server.agentTokenEnc), params.name);
+			return { driftDebug: debug };
+		} catch (e) {
+			if (e instanceof AgentError && e.status === 404) {
+				return fail(502, { driftError: t('git.agentOutdated') });
+			}
+			return fail(502, { driftError: e instanceof AgentError ? e.message : t('stack.unknownError') });
 		}
 	},
 

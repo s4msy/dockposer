@@ -297,6 +297,17 @@ export const de = {
 	'stack.historyLog': 'Protokoll anzeigen',
 	'stack.historyDuration': 'Dauer {seconds}s',
 	'stack.driftServices': 'Betroffen: {services}',
+	'stack.driftWhy': 'Warum?',
+	'stack.driftDiag': 'Drift-Diagnose',
+	'stack.driftFilesNewer': 'Dateien neuer als Container',
+	'stack.driftNewestFile': 'Jüngste Dateiänderung',
+	'stack.driftOldestContainer': 'Ältester Container',
+	'stack.driftExpected': 'Erwartet (aus Dateien)',
+	'stack.driftActual': 'Laufend (Container-Label)',
+	'stack.driftAgentVersion': 'Agent-Version',
+	'stack.driftReason': 'Bewertung',
+	'stack.driftYes': 'ja',
+	'stack.driftNo': 'nein',
 } as const;
 
 export type MessageKey = keyof typeof de;

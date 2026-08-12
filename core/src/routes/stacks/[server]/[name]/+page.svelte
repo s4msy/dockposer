@@ -227,6 +227,54 @@
 			<p style="margin: var(--space-1) 0 0;">{t('stack.driftServices', { services: driftServices.join(', ') })}</p>
 		{/if}
 		<p style="margin: var(--space-1) 0 0; color: var(--color-text-dim);">{t('stack.driftHint')}</p>
+
+		<form method="POST" action="?/driftDetails" use:enhance style="margin-top: var(--space-2);">
+			<button style="width: auto; min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);">
+				{t('stack.driftWhy')}
+			</button>
+		</form>
+
+		{#if form?.driftError}<div class="alert-error" role="alert" style="margin-top: var(--space-2);">{form.driftError}</div>{/if}
+
+		{#if form?.driftDebug}
+			{@const d = form.driftDebug}
+			<div style="margin-top: var(--space-3); font-size: 0.85rem;">
+				<strong>{t('stack.driftDiag')}</strong>
+				<dl style="display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-3); margin: var(--space-2) 0;">
+					<dt style="color: var(--color-text-dim);">{t('stack.driftAgentVersion')}</dt><dd style="margin: 0;"><code>{d.agent_version}</code></dd>
+					<dt style="color: var(--color-text-dim);">{t('stack.driftFilesNewer')}</dt>
+					<dd style="margin: 0; color: {d.files_newer ? 'var(--color-warn)' : 'var(--color-ok)'};">
+						{d.files_newer ? t('stack.driftYes') : t('stack.driftNo')}
+					</dd>
+					<dt style="color: var(--color-text-dim);">{t('stack.driftNewestFile')}</dt>
+					<dd style="margin: 0;">{d.newest_file_mtime ? new Date(d.newest_file_mtime).toLocaleString(page.data.locale ?? 'en') : '—'}</dd>
+					<dt style="color: var(--color-text-dim);">{t('stack.driftOldestContainer')}</dt>
+					<dd style="margin: 0;">{d.oldest_container ? new Date(d.oldest_container).toLocaleString(page.data.locale ?? 'en') : '—'}</dd>
+					<dt style="color: var(--color-text-dim);">{t('stack.driftReason')}</dt><dd style="margin: 0;">{d.reason}</dd>
+				</dl>
+
+				<table style="width: 100%; border-collapse: collapse; font-family: ui-monospace, monospace; font-size: 0.75rem;">
+					<thead>
+						<tr style="text-align: left; color: var(--color-text-dim);">
+							<th style="padding: var(--space-1) 0;">Service</th>
+							<th>{t('stack.driftExpected')}</th>
+							<th>{t('stack.driftActual')}</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each Object.keys({ ...d.expected_hashes, ...d.actual_hashes }).sort() as svc (svc)}
+							{@const exp = d.expected_hashes[svc] ?? ''}
+							{@const act = d.actual_hashes[svc] ?? ''}
+							<tr style="border-top: 1px solid var(--color-border); color: {exp && act && exp !== act ? 'var(--color-warn)' : 'inherit'};">
+								<td style="padding: var(--space-1) 0;">{svc}</td>
+								<td>{exp ? exp.slice(0, 12) : '—'}</td>
+								<td>{act ? act.slice(0, 12) : '—'}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{/if}
 	</div>
 {/if}
 

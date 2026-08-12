@@ -43,6 +43,14 @@ var (
 var composeFileNames = []string{"compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"}
 
 func main() {
+	// Erlaubt dem Installer (und dir per SSH), die installierte Version zu prüfen
+	for _, a := range os.Args[1:] {
+		if a == "--version" || a == "-v" {
+			fmt.Println(version)
+			return
+		}
+	}
+
 	token = os.Getenv("DOCKPOSER_TOKEN")
 	stacksDir = os.Getenv("DOCKPOSER_STACKS")
 	listen := os.Getenv("DOCKPOSER_LISTEN")

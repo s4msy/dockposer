@@ -19,6 +19,7 @@ STACKS="${DOCKPOSER_STACKS:-}"
 LISTEN="${DOCKPOSER_LISTEN:-127.0.0.1:8720}"
 EDITABLE="${DOCKPOSER_EDITABLE_FILES:-}"
 RUN_USER="${DOCKPOSER_USER:-}"
+FROM_SOURCE=0
 BIN_PATH="/usr/local/bin/dockposer-agent"
 ENV_FILE="/etc/dockposer-agent.env"
 UNIT_FILE="/etc/systemd/system/dockposer-agent.service"
@@ -30,6 +31,7 @@ die()  { printf 'FEHLER: %s\n' "$*" >&2; exit 1; }
 # ── Argumente ──
 while [ $# -gt 0 ]; do
 	case "$1" in
+		--from-source) FROM_SOURCE=1; shift ;;
 		--base)   BASE="$2"; shift 2 ;;
 		--token)  TOKEN="$2"; shift 2 ;;
 		--stacks) STACKS="$2"; shift 2 ;;
@@ -106,13 +108,26 @@ if ! id -nG "$RUN_USER" | tr ' ' '\n' | grep -qx docker; then
 fi
 
 # ── Binary ──
-say "Lade Agent-Binary …"
 tmp_bin="$(mktemp)"
-curl -fsSL "$BASE/agent/dockposer-agent-linux-amd64" -o "$tmp_bin" || die "Download fehlgeschlagen: $BASE/agent/dockposer-agent-linux-amd64"
+if [ "$FROM_SOURCE" = "1" ]; then
+	# Aus dem Quellcode bauen — kann nicht veralten, braucht aber Go auf dem Server
+	command -v go >/dev/null || die "--from-source braucht Go (dnf install golang / apt install golang-go)."
+	say "Baue Agent aus dem Quellcode …"
+	src_dir="$(mktemp -d)"
+	for f in go.mod main.go update.go git.go env.go; do
+		curl -fsSL "$BASE/agent/$f" -o "$src_dir/$f" || die "Download fehlgeschlagen: $BASE/agent/$f"
+	done
+	( cd "$src_dir" && CGO_ENABLED=0 go build -ldflags="-s -w" -o "$tmp_bin" . ) || die "Build fehlgeschlagen."
+	rm -rf "$src_dir"
+else
+	say "Lade Agent-Binary …"
+	curl -fsSL "$BASE/agent/dockposer-agent-linux-amd64" -o "$tmp_bin" || die "Download fehlgeschlagen: $BASE/agent/dockposer-agent-linux-amd64"
+fi
 install -m 0755 "$tmp_bin" "$BIN_PATH"
 rm -f "$tmp_bin"
 command -v restorecon >/dev/null && restorecon "$BIN_PATH" 2>/dev/null || true
-say "→ $BIN_PATH installiert."
+installed_version="$("$BIN_PATH" --version 2>/dev/null || echo "?")"
+say "→ $BIN_PATH installiert (Version $installed_version)." 
 
 # ── Config ──
 umask 077

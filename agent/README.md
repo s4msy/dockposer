@@ -16,6 +16,24 @@ curl -fsSL <RAW-BASE>/agent/install.sh | sudo sh -s -- \
 
 `<RAW-BASE>` ist die Raw-URL des Repos bis `…/raw/branch/main`. Der Installer ist idempotent — erneutes Ausführen aktualisiert das Binary und behält die Config (inkl. Token).
 
+## Version prüfen — und aktuell halten
+
+```sh
+dockposer-agent --version          # auf dem Server
+```
+
+Die Version muss zu dem passen, was der Core erwartet. Zeigt die UI „Agent ist veraltet", läuft dort ein älteres Binary.
+
+**Zuverlässiger als das Binary aus dem Repo: direkt auf dem Server bauen.** Dann kann es nicht veralten, weil es aus dem aktuellen Quellcode entsteht:
+
+```sh
+curl -fsSL <RAW-BASE>/agent/install.sh | sudo sh -s -- \
+  --base <RAW-BASE> --from-source \
+  --token <TOKEN> --user <docker-user> --listen <ip>:8720
+```
+
+Voraussetzung ist Go auf dem Zielserver (`dnf install golang` bzw. `apt install golang-go`). Ohne `--from-source` lädt der Installer das vorkompilierte Binary aus dem Repo — das ist nur so aktuell wie der letzte Commit dieser Datei.
+
 ## Wichtig: `--listen` richtig setzen
 
 Der Agent bindet standardmäßig auf `127.0.0.1:8720` — dann ist er **nur vom Server selbst** erreichbar, nicht vom Core auf einer anderen Maschine. Der lokale Health-Check des Installers ist in dem Fall trotzdem grün (er läuft ja auf demselben Host), aber der „Testen"-Button in der UI schlägt fehl.

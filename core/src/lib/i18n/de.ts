@@ -308,6 +308,7 @@ export const de = {
 	'stack.driftReason': 'Bewertung',
 	'stack.driftYes': 'ja',
 	'stack.driftNo': 'nein',
+	'stack.driftAgentOld': 'Der Agent auf diesem Server ist zu alt für die Diagnose (Version 0.3.0 nötig). Neues Binary bereitstellen und den Installer dort erneut ausführen.',
 } as const;
 
 export type MessageKey = keyof typeof de;

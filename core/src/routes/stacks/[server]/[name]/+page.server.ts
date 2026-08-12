@@ -226,7 +226,7 @@ export const actions: Actions = {
 			return { driftDebug: debug };
 		} catch (e) {
 			if (e instanceof AgentError && e.status === 404) {
-				return fail(502, { driftError: t('git.agentOutdated') });
+				return fail(502, { driftError: t('stack.driftAgentOld') });
 			}
 			return fail(502, { driftError: e instanceof AgentError ? e.message : t('stack.unknownError') });
 		}

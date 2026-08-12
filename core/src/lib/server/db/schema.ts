@@ -101,6 +101,7 @@ export const stacks = sqliteTable(
 		servicesTotal: integer('services_total').notNull().default(0),
 		servicesUnhealthy: integer('services_unhealthy').notNull().default(0),
 		drift: integer('drift', { mode: 'boolean' }).notNull().default(false),
+		driftServicesJson: text('drift_services_json'), // welche Services abweichen
 		updatePolicy: text('update_policy', { enum: updatePolicy }).notNull().default('manual'),
 		gitTracking: integer('git_tracking', { mode: 'boolean' }).notNull().default(false),
 		lastSyncedAt: integer('last_synced_at', { mode: 'timestamp' }),

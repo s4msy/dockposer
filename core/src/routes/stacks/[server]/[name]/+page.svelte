@@ -28,6 +28,13 @@
 	let outputEl = $state<HTMLElement | null>(null);
 	let containers = $state(data.containers);
 	let sshCopied = $state(false);
+	const driftServices = $derived.by(() => {
+		try {
+			return JSON.parse(data.stack?.driftServicesJson ?? '[]') as string[];
+		} catch {
+			return [];
+		}
+	});
 	let showDanger = $state(false);
 	let envOpen = $state(false);
 	let confirmName = $state('');
@@ -216,6 +223,9 @@
 {#if data.stack?.drift}
 	<div class="card" style="border-left: 4px solid var(--color-warn);" role="status">
 		<strong>{t('stack.driftTitle')}</strong>
+		{#if driftServices.length > 0}
+			<p style="margin: var(--space-1) 0 0;">{t('stack.driftServices', { services: driftServices.join(', ') })}</p>
+		{/if}
 		<p style="margin: var(--space-1) 0 0; color: var(--color-text-dim);">{t('stack.driftHint')}</p>
 	</div>
 {/if}

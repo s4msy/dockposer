@@ -296,6 +296,7 @@ export const de = {
 	'stack.historyNoChange': 'keine Image-Änderung',
 	'stack.historyLog': 'Protokoll anzeigen',
 	'stack.historyDuration': 'Dauer {seconds}s',
+	'stack.driftServices': 'Betroffen: {services}',
 } as const;
 
 export type MessageKey = keyof typeof de;

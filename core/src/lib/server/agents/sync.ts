@@ -24,6 +24,7 @@ export async function syncServer(server: typeof servers.$inferSelect): Promise<v
 					servicesTotal: s.services_total,
 					servicesUnhealthy: s.services_unhealthy ?? 0,
 					drift: s.drift,
+					driftServicesJson: JSON.stringify(s.drift_services ?? []),
 					lastSyncedAt: new Date()
 				})
 				.onConflictDoUpdate({
@@ -35,6 +36,7 @@ export async function syncServer(server: typeof servers.$inferSelect): Promise<v
 						servicesTotal: s.services_total,
 						servicesUnhealthy: s.services_unhealthy ?? 0,
 						drift: s.drift,
+						driftServicesJson: JSON.stringify(s.drift_services ?? []),
 						lastSyncedAt: new Date()
 					}
 				});

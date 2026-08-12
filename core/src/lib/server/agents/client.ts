@@ -45,6 +45,7 @@ export interface AgentStack {
 	services_running: number;
 	services_total: number;
 	services_unhealthy?: number;
+	drift_services?: string[];
 	drift: boolean;
 }
 

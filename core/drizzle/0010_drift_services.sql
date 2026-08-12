@@ -1,0 +1,1 @@
+ALTER TABLE `stacks` ADD `drift_services_json` text;

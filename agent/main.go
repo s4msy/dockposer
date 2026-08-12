@@ -120,14 +120,15 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 type stackInfo struct {
-	Name              string `json:"name"`
-	Path              string `json:"path"`
-	ComposeHash       string `json:"compose_hash"`
-	State             string `json:"state"`
-	ServicesRunning   int    `json:"services_running"`
-	ServicesTotal     int    `json:"services_total"`
-	ServicesUnhealthy int    `json:"services_unhealthy"`
-	Drift             bool   `json:"drift"`
+	Name              string   `json:"name"`
+	Path              string   `json:"path"`
+	ComposeHash       string   `json:"compose_hash"`
+	State             string   `json:"state"`
+	ServicesRunning   int      `json:"services_running"`
+	ServicesTotal     int      `json:"services_total"`
+	ServicesUnhealthy int      `json:"services_unhealthy"`
+	Drift             bool     `json:"drift"`
+	DriftServices     []string `json:"drift_services,omitempty"`
 }
 
 func handleStacks(w http.ResponseWriter, r *http.Request) {
@@ -167,7 +168,8 @@ func handleStacks(w http.ResponseWriter, r *http.Request) {
 			if l.running > info.ServicesTotal {
 				info.ServicesTotal = l.running // Replicas o. Ä. — nie "5/4" anzeigen
 			}
-			info.Drift = hasDrift(expected, l.hashes, newestComposeMtime(dir), l.oldestCreated)
+			info.DriftServices = driftingServices(expected, l.hashes, newestComposeMtime(dir), l.oldestCreated)
+			info.Drift = len(info.DriftServices) > 0
 		}
 		switch {
 		case info.ServicesTotal == 0:
@@ -347,7 +349,7 @@ func newestComposeMtime(dir string) time.Time {
 			files = append(files, m...)
 		}
 	}
-	files = append(files, filepath.Join(dir, ".env"))
+	files = append(files, envLikeFiles(dir)...)
 	for _, f := range files {
 		if st, err := os.Stat(f); err == nil && st.ModTime().After(newest) {
 			newest = st.ModTime()
@@ -356,7 +358,30 @@ func newestComposeMtime(dir string) time.Time {
 	return newest
 }
 
-// hasDrift entscheidet, ob der laufende Stack von den Dateien abweicht.
+// envLikeFiles: .env und *.env direkt im Stack-Ordner. Viele Projekte binden
+// eine eigene Datei per env_file: ein (Paperless z. B. docker-compose.env) —
+// die verändert die aufgelöste Konfiguration genauso wie .env.
+func envLikeFiles(dir string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(p string) {
+		// Glob "*.env" trifft auch ".env" — sonst landet sie doppelt im Hash
+		if !seen[p] && fileExists(p) {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	add(filepath.Join(dir, ".env"))
+	if m, err := filepath.Glob(filepath.Join(dir, "*.env")); err == nil {
+		for _, p := range m {
+			add(p)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// driftingServices nennt die Services, die von den Dateien abweichen.
 //
 // ZWEI Bedingungen müssen zutreffen — das ist bewusst so:
 //
@@ -372,26 +397,28 @@ func newestComposeMtime(dir string) time.Time {
 //
 // Warum nicht nur (1)? Ein bloßes `touch` oder ein Kommentar-Edit würde sonst
 // Drift melden, obwohl die aufgelöste Konfiguration identisch ist.
-func hasDrift(expected, actual map[string]string, fileMtime, containerCreated time.Time) bool {
+func driftingServices(expected, actual map[string]string, fileMtime, containerCreated time.Time) []string {
 	if len(expected) == 0 || len(actual) == 0 {
-		return false
+		return nil
 	}
 	// (1) Zeitfenster: Dateien müssen jünger sein als der älteste laufende Container.
 	// Ohne verwertbare Zeitangaben lieber nichts melden.
 	if fileMtime.IsZero() || containerCreated.IsZero() || !fileMtime.After(containerCreated) {
-		return false
+		return nil
 	}
 	// (2) Inhaltlicher Vergleich
+	var drifting []string
 	for service, actualHash := range actual {
 		expectedHash, known := expected[service]
 		if !known || expectedHash == "" || actualHash == "" {
 			continue // Service nicht mehr definiert oder Label fehlt → nicht bewertbar
 		}
 		if expectedHash != actualHash {
-			return true
+			drifting = append(drifting, service)
 		}
 	}
-	return false
+	sort.Strings(drifting)
+	return drifting
 }
 
 func handleStats(w http.ResponseWriter, r *http.Request) {
@@ -863,11 +890,9 @@ func hashComposeFiles(dir string) string {
 			files = append(files, m...)
 		}
 	}
-	// .env fließt in die Interpolation ein und verändert damit die aufgelöste
-	// Konfiguration — für Drift-Erkennung und Cache-Invalidierung entscheidend.
-	if envPath := filepath.Join(dir, ".env"); fileExists(envPath) {
-		files = append(files, envPath)
-	}
+	// .env und *.env fließen in die Interpolation ein und verändern damit die
+	// aufgelöste Konfiguration — für Cache-Invalidierung entscheidend.
+	files = append(files, envLikeFiles(dir)...)
 	sort.Strings(files)
 	h := sha256.New()
 	for _, f := range files {

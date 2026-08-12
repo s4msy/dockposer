@@ -289,4 +289,5 @@ export const en: Record<MessageKey, string> = {
 	'stack.historyNoChange': 'no image change',
 	'stack.historyLog': 'Show log',
 	'stack.historyDuration': 'Duration {seconds}s',
+	'stack.driftServices': 'Affected: {services}',
 };

@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { requireUser } from '$lib/server/guards';
 import { db } from '$lib/server/db';
-import { and, desc, inArray, isNull } from 'drizzle-orm';
+import { and, desc, gte, inArray, isNull } from 'drizzle-orm';
 import { alerts, servers as serversTable, updateRuns } from '$lib/server/db/schema';
 import { syncAll } from '$lib/server/agents/sync';
 import { fetchUnmanaged } from '$lib/server/agents/client';
@@ -51,27 +51,39 @@ export const load: PageServerLoad = async ({ locals }) => {
 	// Stacks mit einem Problem dürfen NIE ausgeblendet werden. Ein Stack, der
 	// wegen eines fehlgeschlagenen Updates unten liegt, ist genau der, den man
 	// sehen muss — ihn zu verstecken war der gefährlichste Fall dieser Funktion.
+	// Nur AKTUELLE Probleme halten einen gestoppten Stack sichtbar. Ohne die
+	// Zeitgrenze würde ein Monate alter, nie quittierter Alert den Stack für
+	// immer einblenden — genau das war beim ersten Wurf der Fall.
+	const RECENT_MS = 7 * 24 * 3600 * 1000;
+	const since = new Date(Date.now() - RECENT_MS);
 	const troubled = new Set<number>();
 	if (hideStopped) {
 		const stackIds = stacksWithMeta.map((s) => s.id);
 		if (stackIds.length > 0) {
-			// a) letzter Update-Lauf ging schief
-			const badRuns = await db
+			// a) jüngster Update-Lauf ging schief und liegt nicht lange zurück
+			const runs = await db
 				.select({ stackId: updateRuns.stackId, result: updateRuns.result, startedAt: updateRuns.startedAt })
 				.from(updateRuns)
 				.where(inArray(updateRuns.stackId, stackIds))
 				.orderBy(desc(updateRuns.startedAt));
 			const seen = new Set<number>();
-			for (const run of badRuns) {
+			for (const run of runs) {
 				if (seen.has(run.stackId)) continue; // nur der jüngste Lauf zählt
 				seen.add(run.stackId);
-				if (run.result !== 'success') troubled.add(run.stackId);
+				if (run.result !== 'success' && run.startedAt >= since) troubled.add(run.stackId);
 			}
-			// b) offener Alert zu diesem Stack
+			// b) offener, noch nicht quittierter Alert aus den letzten Tagen
 			for (const row of await db
 				.select({ stackId: alerts.stackId })
 				.from(alerts)
-				.where(and(isNull(alerts.resolvedAt), inArray(alerts.stackId, stackIds)))) {
+				.where(
+					and(
+						isNull(alerts.resolvedAt),
+						isNull(alerts.acknowledgedAt),
+						gte(alerts.firedAt, since),
+						inArray(alerts.stackId, stackIds)
+					)
+				)) {
 				if (row.stackId != null) troubled.add(row.stackId);
 			}
 		}

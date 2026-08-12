@@ -31,7 +31,7 @@ import (
 	"time"
 )
 
-const version = "0.2.0"
+const version = "0.3.0"
 
 var (
 	token      string
@@ -64,6 +64,7 @@ func main() {
 	mux.HandleFunc("GET /v1/unmanaged", handleUnmanaged)
 	mux.HandleFunc("GET /v1/stacks/{name}/compose", handleComposeGet)
 	mux.HandleFunc("GET /v1/stacks/{name}/ps", handleStackPs)
+	mux.HandleFunc("GET /v1/stacks/{name}/drift", handleDriftDebug)
 	mux.HandleFunc("GET /v1/stacks/{name}/images", handleStackImages)
 	mux.HandleFunc("POST /v1/stacks/{name}/update", handleUpdate)
 	mux.HandleFunc("PUT /v1/stacks/{name}/compose", handleComposePut)
@@ -574,6 +575,85 @@ func handleUnmanaged(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, items)
+}
+
+// handleDriftDebug legt alle Eingangsgrößen der Drift-Entscheidung offen.
+// Rein diagnostisch — beantwortet die Frage "warum meldet der Agent (k)ein Drift?"
+// ohne Rätselraten.
+func handleDriftDebug(w http.ResponseWriter, r *http.Request) {
+	dir, ok := stackDir(w, r)
+	if !ok {
+		return
+	}
+	expected := serviceHashes(r.Context(), dir, "") // ohne Cache: immer frisch
+	liveByDir, liveByProject := collectLiveContainers(r.Context())
+	l, found := liveByDir[dir]
+	matchedBy := "working_dir"
+	if !found {
+		l, found = liveByProject[projectNameFor(filepath.Base(dir))]
+		matchedBy = "project_name"
+	}
+	if !found {
+		matchedBy = "none"
+		l = &liveCounts{hashes: map[string]string{}}
+	}
+
+	mtimes := map[string]string{}
+	var files []string
+	if cf := composeFile(dir); cf != "" {
+		files = append(files, cf)
+	}
+	for _, pat := range []string{"compose.override.y*ml", "docker-compose.override.y*ml"} {
+		if m, err := filepath.Glob(filepath.Join(dir, pat)); err == nil {
+			files = append(files, m...)
+		}
+	}
+	files = append(files, envLikeFiles(dir)...)
+	for _, f := range files {
+		if st, err := os.Stat(f); err == nil {
+			mtimes[filepath.Base(f)] = st.ModTime().Format(time.RFC3339)
+		}
+	}
+
+	fileMtime := newestComposeMtime(dir)
+	drifting := driftingServices(expected, l.hashes, fileMtime, l.oldestCreated)
+
+	reason := "kein Unterschied gefunden"
+	switch {
+	case len(expected) == 0:
+		reason = "compose config lieferte keine Hashes (Datei ungültig?)"
+	case len(l.hashes) == 0:
+		reason = "keine laufenden Container mit config-hash-Label"
+	case fileMtime.IsZero():
+		reason = "Datei-Zeitstempel nicht lesbar"
+	case l.oldestCreated.IsZero():
+		reason = "Container-Startzeit nicht lesbar"
+	case !fileMtime.After(l.oldestCreated):
+		reason = "Dateien sind ÄLTER als die Container — Hash-Unterschiede stammen dann aus einem Compose-Update, nicht aus geänderten Dateien"
+	case len(drifting) > 0:
+		reason = "Dateien wurden nach dem Container-Start geändert UND Hashes weichen ab"
+	}
+
+	writeJSON(w, map[string]any{
+		"agent_version":     version,
+		"matched_by":        matchedBy,
+		"file_mtimes":       mtimes,
+		"newest_file_mtime": timeOrEmpty(fileMtime),
+		"oldest_container":  timeOrEmpty(l.oldestCreated),
+		"files_newer":       !fileMtime.IsZero() && !l.oldestCreated.IsZero() && fileMtime.After(l.oldestCreated),
+		"expected_hashes":   expected,
+		"actual_hashes":     l.hashes,
+		"drift":             len(drifting) > 0,
+		"drift_services":    drifting,
+		"reason":            reason,
+	})
+}
+
+func timeOrEmpty(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC3339)
 }
 
 func handleComposeGet(w http.ResponseWriter, r *http.Request) {

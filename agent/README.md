@@ -22,7 +22,15 @@ curl -fsSL <RAW-BASE>/agent/install.sh | sudo sh -s -- \
 dockposer-agent --version          # auf dem Server
 ```
 
-Die Version muss zu dem passen, was der Core erwartet. Zeigt die UI „Agent ist veraltet", läuft dort ein älteres Binary.
+Die Version muss zu dem passen, was der Core erwartet. Zeigt die UI „Agent ist veraltet", läuft dort ein älteres Binary. Die aktive Version steht auch in der Server-Übersicht der UI (Verbindungstest).
+
+**Achtung bei Handinstallation:** Ein neues Binary auf die Platte zu kopieren genügt nicht — der laufende Prozess benutzt weiterhin das alte. Nach jedem Austausch:
+
+```sh
+sudo systemctl restart dockposer-agent
+```
+
+Der Installer macht das seit Version 0.3.0 selbst.
 
 **Zuverlässiger als das Binary aus dem Repo: direkt auf dem Server bauen.** Dann kann es nicht veralten, weil es aus dem aktuellen Quellcode entsteht:
 

@@ -167,10 +167,20 @@ UNITEOF
 
 if command -v systemctl >/dev/null && [ -d /run/systemd/system ]; then
 	systemctl daemon-reload
-	systemctl enable --now dockposer-agent
+	systemctl enable dockposer-agent >/dev/null 2>&1 || true
+	# WICHTIG: restart statt "enable --now". Läuft der Dienst bereits, würde
+	# "enable --now" nichts tun — das neue Binary läge auf der Platte, während
+	# der alte Prozess weiterläuft.
+	systemctl restart dockposer-agent
 	sleep 1
 	if systemctl is-active --quiet dockposer-agent; then
-		say "→ Dienst läuft."
+		running_version="$(curl -fsS -m 3 -H "Authorization: Bearer $TOKEN" "http://$LISTEN/v1/health" 2>/dev/null \
+			| sed -n 's/.*"version":"\([^"]*\)".*/\1/p')"
+		if [ -n "$running_version" ]; then
+			say "→ Dienst läuft (aktive Version: $running_version)."
+		else
+			say "→ Dienst läuft."
+		fi
 	else
 		warn "Dienst gestartet, aber nicht aktiv — journalctl -u dockposer-agent prüfen."
 	fi

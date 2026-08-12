@@ -250,6 +250,10 @@
 					<dd style="margin: 0;">{d.newest_file_mtime ? new Date(d.newest_file_mtime).toLocaleString(page.data.locale ?? 'en') : '—'}</dd>
 					<dt style="color: var(--color-text-dim);">{t('stack.driftOldestContainer')}</dt>
 					<dd style="margin: 0;">{d.oldest_container ? new Date(d.oldest_container).toLocaleString(page.data.locale ?? 'en') : '—'}</dd>
+					{#if d.compose_verdict}
+						<dt style="color: var(--color-text-dim);">{t('stack.driftComposeVerdict')}</dt>
+						<dd style="margin: 0;">{d.compose_verdict}</dd>
+					{/if}
 					<dt style="color: var(--color-text-dim);">{t('stack.driftReason')}</dt><dd style="margin: 0;">{d.reason}</dd>
 				</dl>
 

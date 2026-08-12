@@ -219,6 +219,8 @@ export interface AgentDriftDebug {
 	actual_hashes: Record<string, string>;
 	drift: boolean;
 	drift_services: string[] | null;
+	suspected_services?: string[] | null;
+	compose_verdict?: string;
 	reason: string;
 }
 

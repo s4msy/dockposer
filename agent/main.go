@@ -177,8 +177,17 @@ func handleStacks(w http.ResponseWriter, r *http.Request) {
 			if l.running > info.ServicesTotal {
 				info.ServicesTotal = l.running // Replicas o. Ä. — nie "5/4" anzeigen
 			}
-			info.DriftServices = driftingServices(expected, l.hashes, newestComposeMtime(dir), l.oldestCreated)
-			info.Drift = len(info.DriftServices) > 0
+			// Billige Vorprüfung (Hash + Zeitfenster); erst bei Verdacht fragen
+			// wir Compose selbst — das kostet nur im Ausnahmefall Zeit.
+			if suspected := driftingServices(expected, l.hashes, newestComposeMtime(dir), l.oldestCreated); len(suspected) > 0 {
+				key := hash + "|" + l.oldestCreated.Format(time.RFC3339)
+				if confirmed, usable := confirmDrift(r.Context(), dir, key); usable {
+					info.DriftServices = confirmed // Compose hat das letzte Wort
+				} else {
+					info.DriftServices = suspected // keine Auskunft → Vorprüfung gilt
+				}
+				info.Drift = len(info.DriftServices) > 0
+			}
 		}
 		switch {
 		case info.ServicesTotal == 0:
@@ -388,6 +397,64 @@ func envLikeFiles(dir string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// Ergebnis der Compose-Gegenprobe zwischenspeichern: Schlüssel aus Datei-Hash
+// und Container-Startzeit — beides ändert sich nur bei echten Ereignissen.
+var (
+	dryRunCache = map[string][]string{}
+	dryRunMu    sync.Mutex
+)
+
+// confirmDrift fragt Compose selbst, ob es Container neu erstellen würde.
+// Das ist die einzig verlässliche Auskunft: `compose config --hash` weicht bei
+// Services mit `extends:` (z. B. Immich mit Hardware-Beschleunigung) vom Label
+// ab, das beim Start geschrieben wurde — der reine Hash-Vergleich meldet dort
+// Drift, obwohl Compose nichts zu tun sähe.
+//
+// Rückgabe: (betroffene Container, Auskunft verwertbar?)
+func confirmDrift(ctx context.Context, dir, cacheKey string) ([]string, bool) {
+	if cacheKey != "" {
+		dryRunMu.Lock()
+		cached, ok := dryRunCache[cacheKey]
+		dryRunMu.Unlock()
+		if ok {
+			return cached, true
+		}
+	}
+	out, err := run(ctx, dir, 60*time.Second, "docker", "compose", "up", "-d", "--dry-run")
+	if err != nil {
+		return nil, false // z. B. Compose ohne --dry-run-Unterstützung
+	}
+	var affected []string
+	for _, line := range nonEmptyLines(out) {
+		idx := strings.Index(line, "Container ")
+		if idx < 0 {
+			continue
+		}
+		fields := strings.Fields(line[idx+len("Container "):])
+		if len(fields) < 2 {
+			continue
+		}
+		// Das Verb steht direkt hinter dem Namen; danach folgt noch die Zeitangabe
+		// (" ✔ Container web-1  Recreate  0.1s") — deshalb NICHT das letzte Feld.
+		name, verb := fields[0], strings.ToLower(fields[1])
+		// "Recreate"/"Recreated" = Konfiguration weicht ab, "Create"/"Created" =
+		// Container fehlt noch. "Running"/"Started" = alles wie definiert.
+		if strings.HasPrefix(verb, "recreat") || strings.HasPrefix(verb, "creat") {
+			affected = append(affected, name)
+		}
+	}
+	sort.Strings(affected)
+	if cacheKey != "" {
+		dryRunMu.Lock()
+		if len(dryRunCache) > 500 {
+			dryRunCache = map[string][]string{}
+		}
+		dryRunCache[cacheKey] = affected
+		dryRunMu.Unlock()
+	}
+	return affected, true
 }
 
 // driftingServices nennt die Services, die von den Dateien abweichen.
@@ -624,7 +691,21 @@ func handleDriftDebug(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fileMtime := newestComposeMtime(dir)
-	drifting := driftingServices(expected, l.hashes, fileMtime, l.oldestCreated)
+	suspected := driftingServices(expected, l.hashes, fileMtime, l.oldestCreated)
+	drifting := suspected
+	composeVerdict := "nicht abgefragt (kein Verdacht)"
+	if len(suspected) > 0 {
+		if confirmed, usable := confirmDrift(r.Context(), dir, ""); usable {
+			drifting = confirmed
+			if len(confirmed) == 0 {
+				composeVerdict = "Compose würde NICHTS neu erstellen — Hash-Unterschied ist ein Artefakt (z. B. extends:)"
+			} else {
+				composeVerdict = "Compose würde neu erstellen: " + strings.Join(confirmed, ", ")
+			}
+		} else {
+			composeVerdict = "compose up --dry-run nicht verfügbar — Vorprüfung gilt"
+		}
+	}
 
 	reason := "kein Unterschied gefunden"
 	switch {
@@ -638,22 +719,26 @@ func handleDriftDebug(w http.ResponseWriter, r *http.Request) {
 		reason = "Container-Startzeit nicht lesbar"
 	case !fileMtime.After(l.oldestCreated):
 		reason = "Dateien sind ÄLTER als die Container — Hash-Unterschiede stammen dann aus einem Compose-Update, nicht aus geänderten Dateien"
+	case len(suspected) > 0 && len(drifting) == 0:
+		reason = "Hash-Vergleich schlug an, aber Compose sieht keinen Handlungsbedarf — kein Drift"
 	case len(drifting) > 0:
-		reason = "Dateien wurden nach dem Container-Start geändert UND Hashes weichen ab"
+		reason = "Dateien geändert, Hashes weichen ab, und Compose würde neu erstellen"
 	}
 
 	writeJSON(w, map[string]any{
-		"agent_version":     version,
-		"matched_by":        matchedBy,
-		"file_mtimes":       mtimes,
-		"newest_file_mtime": timeOrEmpty(fileMtime),
-		"oldest_container":  timeOrEmpty(l.oldestCreated),
-		"files_newer":       !fileMtime.IsZero() && !l.oldestCreated.IsZero() && fileMtime.After(l.oldestCreated),
-		"expected_hashes":   expected,
-		"actual_hashes":     l.hashes,
-		"drift":             len(drifting) > 0,
-		"drift_services":    drifting,
-		"reason":            reason,
+		"agent_version":      version,
+		"matched_by":         matchedBy,
+		"file_mtimes":        mtimes,
+		"newest_file_mtime":  timeOrEmpty(fileMtime),
+		"oldest_container":   timeOrEmpty(l.oldestCreated),
+		"files_newer":        !fileMtime.IsZero() && !l.oldestCreated.IsZero() && fileMtime.After(l.oldestCreated),
+		"expected_hashes":    expected,
+		"actual_hashes":      l.hashes,
+		"suspected_services": suspected,
+		"compose_verdict":    composeVerdict,
+		"drift":              len(drifting) > 0,
+		"drift_services":     drifting,
+		"reason":             reason,
 	})
 }
 

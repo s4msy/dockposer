@@ -309,6 +309,7 @@ export const de = {
 	'stack.driftYes': 'ja',
 	'stack.driftNo': 'nein',
 	'stack.driftAgentOld': 'Der Agent auf diesem Server ist zu alt für die Diagnose (Version 0.3.0 nötig). Neues Binary bereitstellen und den Installer dort erneut ausführen.',
+	'stack.driftComposeVerdict': 'Compose-Gegenprobe',
 } as const;
 
 export type MessageKey = keyof typeof de;

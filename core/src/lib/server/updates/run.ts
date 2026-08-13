@@ -76,7 +76,9 @@ export async function recordUpdateRun(
 			// Nur Services zählen, deren Digest sich tatsächlich geändert hat
 			const oldD = parsed.old_digests ?? {};
 			const newD = parsed.new_digests ?? {};
-			const changed = Object.entries(newD).filter(([svc, digest]) => oldD[svc] !== digest).length;
+			const changed = Object.keys(newD)
+				.filter((svc) => oldD[svc] !== newD[svc])
+				.sort();
 			await engine.updateSucceeded(serverId, stackName, changed);
 		}
 	}

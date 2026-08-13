@@ -168,11 +168,18 @@ class AlertEngine {
 	 * automatischen laufen unbeobachtet und sind genau die, von denen man
 	 * erfahren will. Ohne tatsächlich getauschte Images bleibt es still.
 	 */
-	async updateSucceeded(serverId: number, stackName: string, changedServices: number) {
-		if (changedServices < 1) return;
+	async updateSucceeded(serverId: number, stackName: string, changedServices: string[]) {
+		if (changedServices.length < 1) return;
 		if (!(await this.rule('update_success'))?.enabled) return;
+		// Bei vielen Services die Meldung nicht ausufern lassen — Push-Nachrichten
+		// werden auf dem Sperrbildschirm ohnehin abgeschnitten.
+		const MAX_NAMED = 4;
+		const services =
+			changedServices.length <= MAX_NAMED
+				? changedServices.join(', ')
+				: `${changedServices.slice(0, MAX_NAMED).join(', ')} +${changedServices.length - MAX_NAMED}`;
 		await this.fire('update_success', 'info', serverId, undefined, stackName,
-			'alert.updateSuccess', { stack: stackName, count: changedServices }, true);
+			'alert.updateSuccess', { stack: stackName, services }, true);
 	}
 
 	// ── Server-Ebene: Agent offline / Disk ──

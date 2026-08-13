@@ -20,12 +20,20 @@ export const load: PageServerLoad = async ({ locals }) => {
 	// Meldung erst hier übersetzen; Alerts ohne Schlüssel stammen aus älteren
 	// Versionen und behalten ihren gespeicherten Text.
 	const t = translator(locals.locale);
-	const render = (a: typeof openRows[number]) => ({
-		...a,
-		message: a.messageKey
-			? t(a.messageKey as MessageKey, a.messageParamsJson ? JSON.parse(a.messageParamsJson) : {})
-			: a.message
-	});
+	const render = (a: (typeof openRows)[number]) => {
+		if (!a.messageKey) return a;
+		let params: Record<string, string | number> = {};
+		try {
+			params = a.messageParamsJson ? JSON.parse(a.messageParamsJson) : {};
+		} catch {
+			/* defekter Eintrag — mit leeren Parametern rendern */
+		}
+		const rendered = t(a.messageKey as MessageKey, params);
+		// Ältere Einträge können Parameter tragen, die der aktuelle Text nicht
+		// mehr kennt (z. B. {count} → {services}). Dann bleibt ein Platzhalter
+		// stehen — in dem Fall lieber den gespeicherten Originaltext zeigen.
+		return { ...a, message: /\{[a-z_]+\}/i.test(rendered) ? a.message : rendered };
+	};
 	return { open: openRows.map(render), resolved: resolvedRows.map(render), serverNames };
 };
 

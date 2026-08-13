@@ -268,7 +268,7 @@ export const de = {
 	'push.critical': 'Kritisch',
 	'push.warning': 'Warnung',
 	'push.info': 'Info',
-	'alert.updateSuccess': 'Update von {stack} erfolgreich — {count} Service(s) aktualisiert.',
+	'alert.updateSuccess': 'Update von {stack} erfolgreich — {services} aktualisiert.',
 	'settings.alertRules': 'Alarm-Regeln',
 	'settings.alertRulesHint': 'Welche Ereignisse eine Benachrichtigung auslösen. Gilt für alle Server.',
 	'alertType.crash_loop': 'Crash-Loop (mehrfacher Neustart)',

@@ -261,7 +261,7 @@ export const en: Record<MessageKey, string> = {
 	'push.critical': 'Critical',
 	'push.warning': 'Warning',
 	'push.info': 'Info',
-	'alert.updateSuccess': 'Update of {stack} succeeded — {count} service(s) updated.',
+	'alert.updateSuccess': 'Update of {stack} succeeded — {services} updated.',
 	'settings.alertRules': 'Alert rules',
 	'settings.alertRulesHint': 'Which events trigger a notification. Applies to all servers.',
 	'alertType.crash_loop': 'Crash loop (repeated restarts)',

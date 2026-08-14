@@ -30,7 +30,7 @@
 	<nav>
 		<a href="/" aria-current={page.url.pathname === '/' ? 'page' : undefined}>{t('nav.overview')}</a>
 		<a href="/alerts" aria-current={page.url.pathname.startsWith('/alerts') ? 'page' : undefined}>
-			{t('nav.alerts')}
+			<span style="overflow: hidden; text-overflow: ellipsis;">{t('nav.alerts')}</span>
 			{#if page.data.openAlerts > 0}<span class="badge">{page.data.openAlerts}</span>{/if}
 		</a>
 		<a href="/settings" aria-current={page.url.pathname.startsWith('/settings') ? 'page' : undefined}>{t('nav.settings')}</a>
@@ -45,30 +45,58 @@
 		right: 0;
 		z-index: 10;
 		display: flex;
-		justify-content: space-around;
 		background: var(--color-surface);
 		border-top: 1px solid var(--color-border);
-		padding: var(--space-2) 0 calc(var(--space-2) + env(safe-area-inset-bottom));
+		/* Seitliche Safe-Area für Notch/abgerundete Ecken im Querformat */
+		padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 	}
+	/*
+	 * Feste Drittel statt space-around: Vorher wuchsen die Einträge mit ihrem
+	 * Textinhalt, und sobald das Alert-Badge dazukam, lief die Zeile über den
+	 * Bildschirmrand — der letzte Eintrag ("Einstellungen") war dann nicht mehr
+	 * erreichbar. Mit flex: 1 bekommt jeder Eintrag garantiert seinen Platz.
+	 */
 	nav a {
-		text-decoration: none;
-		color: var(--color-text-dim);
-		padding: var(--space-2) var(--space-4);
-		min-height: 44px;
+		flex: 1 1 0;
+		min-width: 0;
 		display: flex;
 		align-items: center;
+		justify-content: center;
+		gap: 4px;
+		text-decoration: none;
+		color: var(--color-text-dim);
+		padding: var(--space-3) var(--space-1);
+		min-height: 44px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	nav a[aria-current='page'] {
 		color: var(--color-primary);
 		font-weight: 700;
 	}
 	.badge {
+		flex-shrink: 0; /* darf nicht zusammengedrückt werden */
 		background: var(--color-crit);
 		color: #fff;
 		border-radius: 999px;
 		font-size: 0.7rem;
 		font-weight: 700;
 		padding: 1px 7px;
-		margin-left: 4px;
+	}
+	/* Sehr schmale Geräte: lieber kleinere Schrift als abgeschnittene Wörter */
+	@media (max-width: 360px) {
+		nav a {
+			font-size: 0.85rem;
+		}
+	}
+	/* Auf breiten Schirmen die Einträge mittig bündeln statt über 2000px ziehen */
+	@media (min-width: 720px) {
+		nav {
+			justify-content: center;
+		}
+		nav a {
+			flex: 0 0 200px;
+		}
 	}
 </style>

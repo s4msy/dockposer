@@ -276,11 +276,6 @@ label { display: block; margin-bottom: var(--space-1); color: var(--color-text-d
 	.server-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
 }
 
-/* Die fixe Nav soll auf breiten Schirmen nicht über die ganze Breite laufen */
-@media (min-width: 720px) {
-	nav > :global(*) { max-width: none; }
-}
-
 /* Buttons und Eingabefelder füllen ihre Karte — halbbreite Elemente in einer
    breiten Karte wirken wie ein Layoutfehler. Wer schmal will, setzt width:auto. */
 

@@ -24,7 +24,9 @@
 {#each data.open as alert (alert.id)}
 	<div class="card" style="border-left: 4px solid {sevColor[alert.severity]};">
 		<div style="display: flex; align-items: baseline; gap: var(--space-2);">
-			<strong style="flex: 1;">{alert.message}</strong>
+			<!-- min-width: 0 — ohne das schrumpfen Flex-Kinder nicht unter ihre
+			     Mindestbreite und lange Meldungen erzeugen horizontalen Überlauf -->
+			<strong style="flex: 1; min-width: 0;">{alert.message}</strong>
 		</div>
 		<small style="color: var(--color-text-dim); display: block; margin: var(--space-1) 0 var(--space-2);">
 			{data.serverNames[alert.serverId] ?? `Server ${alert.serverId}`} · {fmtTime(alert.firedAt)}

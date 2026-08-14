@@ -43,8 +43,17 @@
 		bottom: 0;
 		left: 0;
 		right: 0;
+		width: 100%;
 		z-index: 10;
 		display: flex;
+		/*
+		 * Eigene Compositing-Ebene erzwingen. Ohne das zeichnen mobile Browser
+		 * fixierte Leisten auf langen Seiten teils erst nach einem Scroll-Repaint
+		 * — die Leiste "erscheint" dann mittendrin und manchmal unvollständig.
+		 */
+		transform: translateZ(0);
+		will-change: transform;
+		backface-visibility: hidden;
 		background: var(--color-surface);
 		border-top: 1px solid var(--color-border);
 		/* Seitliche Safe-Area für Notch/abgerundete Ecken im Querformat */

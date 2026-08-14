@@ -155,6 +155,14 @@
 }
 
 * { box-sizing: border-box; }
+/*
+ * Kein horizontales Scrollen: Sobald ein einzelnes Element breiter wird als der
+ * Bildschirm (lange Alert-Texte, Hashes, Pfade), wird das Dokument breiter als
+ * der Viewport. Eine fixierte Leiste mit left/right:0 spannt dann nur über die
+ * Viewport-Breite und wirkt beim Seitwärtsscrollen abgeschnitten.
+ */
+html { overflow-x: hidden; }
+body { overflow-x: hidden; max-width: 100vw; }
 html { font-family: var(--font); background: var(--color-bg); color: var(--color-text); }
 body { margin: 0; min-height: 100dvh; }
 main {
@@ -285,3 +293,8 @@ label { display: block; margin-bottom: var(--space-1); color: var(--color-text-d
 	.card { padding: var(--space-3); margin-bottom: var(--space-2); }
 	.term { max-height: 60dvh; }
 }
+
+
+/* Lange, ununterbrochene Zeichenketten (Digests, Pfade, Containernamen) dürfen
+   die Karte nicht sprengen — sonst entsteht horizontaler Überlauf. */
+.card { overflow-wrap: anywhere; }

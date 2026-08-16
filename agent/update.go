@@ -145,12 +145,36 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	oldDigests := map[string]string{}
+	pinnedCount := 0
 	for _, img := range oldImgs {
-		if img.Digest != "" {
+		// Per Digest gepinnte Images kann `pull` nicht verändern — für diese
+		// Services ist ein Update wie ein Rollback wirkungslos.
+		pinned := strings.Contains(img.Image, "@sha256:")
+		if pinned {
+			pinnedCount++
+		}
+		switch {
+		case img.Digest == "":
+			emit("  " + img.Service + ": kein Digest (lokal gebaut?) — kein Rollback für diesen Service möglich")
+		case pinned:
+			oldDigests[img.Service] = img.Digest
+			emit("  " + img.Service + ": " + shortDigest(img.Digest) + "  [per Digest gepinnt — unveränderlich]")
+		default:
 			oldDigests[img.Service] = img.Digest
 			emit("  " + img.Service + ": " + shortDigest(img.Digest))
-		} else {
-			emit("  " + img.Service + ": kein Digest (lokal gebaut?) — kein Rollback für diesen Service möglich")
+		}
+	}
+	if pinnedCount == len(oldImgs) && pinnedCount > 0 {
+		emit("Alle Images sind per Digest gepinnt — ein Update kann hier nichts ändern.")
+		result("success", map[string]any{"old_digests": oldDigests, "new_digests": oldDigests})
+		return
+	}
+
+	// Zustand VOR dem Eingriff festhalten (siehe wasBrokenBefore)
+	before := healthSnapshot(ctx, dir)
+	for svc, row := range before {
+		if wasBrokenBefore(before, svc) {
+			emit(fmt.Sprintf("  Ausgangslage: %s ist %s/%s — bereits vor dem Update auffällig", svc, row.State, row.Health))
 		}
 	}
 
@@ -165,15 +189,15 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 	emit("docker compose up -d …")
 	if exit := runStream(ctx, dir, w, f, "up", "-d"); exit != 0 {
 		emit("up fehlgeschlagen — Rollback …")
-		doRollback(ctx, dir, w, f, oldDigests, emit, result, "up fehlgeschlagen")
+		doRollback(ctx, dir, w, f, oldDigests, before, emit, result, "up fehlgeschlagen")
 		return
 	}
 
 	// 4) Stabilisierungsfenster
 	emit(fmt.Sprintf("Stabilisierungsfenster: %d Sekunden …", window))
-	if reason := stabilize(ctx, dir, window, emit); reason != "" {
+	if reason := stabilize(ctx, dir, window, before, emit); reason != "" {
 		emit("Instabil: " + reason + " — Rollback …")
-		doRollback(ctx, dir, w, f, oldDigests, emit, result, reason)
+		doRollback(ctx, dir, w, f, oldDigests, before, emit, result, reason)
 		return
 	}
 
@@ -195,9 +219,36 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 
 // stabilize beobachtet den Stack für `window` Sekunden.
 // Leerer Rückgabewert = stabil; sonst der Grund für den Rollback.
-func stabilize(ctx context.Context, dir string, window int, emit func(string)) string {
+// healthSnapshot hält den Zustand VOR dem Update fest. Nur so lässt sich
+// unterscheiden, ob ein Problem durch das Update entstanden ist oder schon
+// vorher bestand — sonst rollt Dockposer wegen eines Containers zurück, den
+// es gar nicht angefasst hat.
+func healthSnapshot(ctx context.Context, dir string) map[string]psRow {
+	snap := map[string]psRow{}
+	rows, err := composePs(ctx, dir)
+	if err != nil {
+		return snap
+	}
+	for _, row := range rows {
+		snap[row.Service] = row
+	}
+	return snap
+}
+
+// wasBrokenBefore: lief dieser Service schon vor dem Update nicht sauber?
+func wasBrokenBefore(before map[string]psRow, service string) bool {
+	prev, known := before[service]
+	if !known {
+		return false // Service ist neu — dann zählt sein Zustand
+	}
+	return prev.Health == "unhealthy" || prev.State == "exited" || prev.State == "dead" ||
+		prev.State == "restarting" || prev.State == ""
+}
+
+func stabilize(ctx context.Context, dir string, window int, before map[string]psRow, emit func(string)) string {
 	deadline := time.Now().Add(time.Duration(window) * time.Second)
 	lastNote := time.Now()
+	noted := map[string]bool{}
 	for {
 		if ctx.Err() != nil {
 			return "abgebrochen"
@@ -207,6 +258,15 @@ func stabilize(ctx context.Context, dir string, window int, emit func(string)) s
 			return "compose ps fehlgeschlagen: " + err.Error()
 		}
 		for _, row := range rows {
+			// Vorbelastete Services nicht dem Update anlasten — einmal erwähnen,
+			// damit der Zustand im Protokoll sichtbar bleibt.
+			if wasBrokenBefore(before, row.Service) {
+				if !noted[row.Service] {
+					noted[row.Service] = true
+					emit(fmt.Sprintf("  Hinweis: %s war schon vor dem Update nicht gesund — wird nicht bewertet", row.Service))
+				}
+				continue
+			}
 			switch row.State {
 			case "exited", "dead":
 				return fmt.Sprintf("%s ist %s", row.Service, row.State)
@@ -219,6 +279,9 @@ func stabilize(ctx context.Context, dir string, window int, emit func(string)) s
 		}
 		if time.Now().After(deadline) {
 			for _, row := range rows {
+				if wasBrokenBefore(before, row.Service) {
+					continue
+				}
 				if row.Health == "starting" {
 					return row.Service + ": Healthcheck nicht rechtzeitig healthy (start_period prüfen)"
 				}
@@ -264,7 +327,8 @@ func composePs(ctx context.Context, dir string) ([]psRow, error) {
 }
 
 func doRollback(ctx context.Context, dir string, w http.ResponseWriter, f http.Flusher,
-	oldDigests map[string]string, emit func(string), result func(string, map[string]any), reason string) {
+	oldDigests map[string]string, before map[string]psRow,
+	emit func(string), result func(string, map[string]any), reason string) {
 	if len(oldDigests) == 0 {
 		emit("Kein Rollback möglich: keine alten Digests bekannt.")
 		result("failed", map[string]any{"stage": "rollback", "reason": reason + " (kein Rollback möglich)"})
@@ -288,6 +352,21 @@ func doRollback(ctx context.Context, dir string, w http.ResponseWriter, f http.F
 	exit := runStream(ctx, dir, w, f, "-f", cf, "-f", rollbackFile, "up", "-d")
 	if exit != 0 {
 		result("failed", map[string]any{"stage": "rollback", "reason": reason + " (Rollback-up fehlgeschlagen!)"})
+		return
+	}
+	// Gegenprobe: Hat der Rollback das Problem tatsächlich behoben? Ohne diese
+	// Prüfung meldet Dockposer "läuft wieder auf altem Stand", obwohl der Stack
+	// womöglich unverändert kaputt ist — und die Ursache lag dann nicht am Update.
+	emit("Prüfe, ob der Rollback geholfen hat …")
+	if stillBroken := stabilize(ctx, dir, 30, before, emit); stillBroken != "" {
+		emit("⚠ Auch nach dem Rollback instabil: " + stillBroken)
+		emit("Die Ursache liegt damit nicht am Update — die Pin-Datei wurde entfernt.")
+		os.Remove(filepath.Join(dir, rollbackFile)) // nichts pinnen, was nicht hilft
+		result("failed", map[string]any{
+			"stage":       "rollback",
+			"reason":      stillBroken + " (bestand auch nach dem Rollback — nicht durch das Update verursacht)",
+			"old_digests": oldDigests,
+		})
 		return
 	}
 	emit("✓ Rollback aktiv — Stack läuft wieder auf altem Stand.")

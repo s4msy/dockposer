@@ -303,4 +303,6 @@ export const en: Record<MessageKey, string> = {
 	'stack.driftNo': 'no',
 	'stack.driftAgentOld': 'The agent on this server is too old for this diagnosis (version 0.3.0 required). Provide the new binary and re-run the installer there.',
 	'stack.driftComposeVerdict': 'Compose cross-check',
+	'stack.allPinned': 'All images are pinned by digest — updates cannot change anything here.',
+	'stack.pinnedService': 'pinned by digest',
 };

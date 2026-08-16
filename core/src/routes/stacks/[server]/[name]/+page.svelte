@@ -315,6 +315,9 @@
 					{:else}<span style="color: var(--color-text-dim);">?</span>{/if}
 					<span style="flex: 1;">
 						{u.service} <small style="color: var(--color-text-dim);">{u.image}</small>
+						{#if u.image?.includes('@sha256:')}
+							<small style="color: var(--color-warn);">· {t('stack.pinnedService')}</small>
+						{/if}
 						{#if u.status === 'update'}
 							<small style="display: block; color: var(--color-text-dim);">{u.current.slice(7, 19)} → {u.latest.slice(7, 19)}</small>
 						{:else if u.status === 'unknown'}
@@ -333,6 +336,9 @@
 				</li>
 			{/each}
 		</ul>
+	{/if}
+	{#if data.updates.length > 0 && data.updates.every((u: { image?: string }) => u.image?.includes('@sha256:'))}
+		<p style="color: var(--color-warn);">{t('stack.allPinned')}</p>
 	{/if}
 	{#if data.lastUpdateCheck}
 		<small style="color: var(--color-text-dim); display: block; margin-bottom: var(--space-2);">

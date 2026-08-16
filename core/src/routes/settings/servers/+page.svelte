@@ -78,7 +78,7 @@
 			<p>{t('servers.tokenOnce')}</p>
 			<div style="display: flex; gap: var(--space-2); align-items: center;">
 				<code style="word-break: break-all; flex: 1; padding: var(--space-2); background: var(--color-bg); border-radius: var(--radius);">{form.created.token}</code>
-				<button style="width: auto;" onclick={() => copyToken(form.created.token)}>{copied ? '✓' : t('servers.copy')}</button>
+				<button style="width: auto;" onclick={() => form.created?.token && copyToken(form.created.token)}>{copied ? '✓' : t('servers.copy')}</button>
 			</div>
 			<details style="margin-top: var(--space-2);">
 				<summary>{t('servers.installOneliner')}</summary>

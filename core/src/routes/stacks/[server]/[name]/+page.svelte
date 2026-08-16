@@ -4,6 +4,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { translator } from '$lib/i18n';
+	import CodeEditor from '$lib/components/CodeEditor.svelte';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	const t = $derived(translator(page.data.locale ?? 'en'));
 
@@ -471,13 +472,12 @@
 		{/if}
 
 		<form method="POST" action="?/saveCompose" use:enhance={() => async ({ update }) => update({ reset: false })}>
-			<textarea
+			<CodeEditor
 				name="content"
 				bind:value={editorContent}
-				rows="18"
-				spellcheck="false"
-				style="width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-bg); color: var(--color-text); padding: var(--space-3);"
-			></textarea>
+				fileName={data.compose.file}
+				rows={18}
+			/>
 			<button style="margin-top: var(--space-2);" disabled={data.agentOffline}>{t('stack.saveCompose')}</button>
 		</form>
 	</div>
@@ -527,15 +527,13 @@
 				<form method="POST" action="?/saveFile" use:enhance={() => async ({ update }) => update({ reset: false })}>
 					<input type="hidden" name="fileName" value={form.fileName} />
 					<label for="fileContent"><code>{form.fileName}</code>{#if !form.fileExists} — {t('stack.fileNotYet')}{/if}</label>
-					<textarea
+					<CodeEditor
 						id="fileContent"
 						name="fileContent"
 						value={form.fileContent ?? ''}
-						rows="12"
-						spellcheck="false"
-						autocomplete="off"
-						style="width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-bg); color: var(--color-text); padding: var(--space-3);"
-					></textarea>
+						fileName={form.fileName}
+						rows={12}
+					/>
 					<button style="margin-top: var(--space-2);" disabled={data.agentOffline}>{t('common.save')}</button>
 				</form>
 			{/if}

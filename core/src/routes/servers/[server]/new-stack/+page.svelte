@@ -3,6 +3,7 @@
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
 	import { translator } from '$lib/i18n';
+	import CodeEditor from '$lib/components/CodeEditor.svelte';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	const t = $derived(translator(page.data.locale ?? 'en'));
 
@@ -28,14 +29,9 @@
 	<input id="name" name="name" placeholder="mein-stack" required value={form?.name ?? ''} />
 
 	<label for="content">compose.yaml</label>
-	<textarea
-		id="content"
-		name="content"
-		bind:value={content}
-		rows="14"
-		spellcheck="false"
-		style="width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-bg); color: var(--color-text); padding: var(--space-3); margin-bottom: var(--space-3);"
-	></textarea>
+	<div style="margin-bottom: var(--space-3);">
+		<CodeEditor id="content" name="content" bind:value={content} fileName="compose.yaml" rows={14} />
+	</div>
 
 	<button>{t('newstack.create')}</button>
 </form>

@@ -15,7 +15,7 @@
 	let pushState = $state<'unknown' | 'unsupported' | 'off' | 'on' | 'busy'>('unknown');
 	let pushError = $state('');
 
-	function b64ToUint8(base64: string): Uint8Array {
+	function b64ToUint8(base64: string): BufferSource {
 		const pad = '='.repeat((4 - (base64.length % 4)) % 4);
 		const raw = atob((base64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
 		return Uint8Array.from(raw, (c) => c.charCodeAt(0));
@@ -297,7 +297,7 @@
 		<p>{tr('settings.pushUnsupported')}</p>
 	{:else if pushState === 'on'}
 		<p>✓ {data.webpushCount > 1 ? tr('settings.pushActiveMulti', { count: data.webpushCount }) : tr('settings.pushActive')}</p>
-		<button onclick={disablePush} disabled={pushState === 'busy'} style="background: transparent; color: var(--color-crit); border: 1px solid var(--color-crit);">{tr('settings.pushDisable')}</button>
+		<button onclick={disablePush} style="background: transparent; color: var(--color-crit); border: 1px solid var(--color-crit);">{tr('settings.pushDisable')}</button>
 	{:else}
 		<button onclick={enablePush} disabled={pushState !== 'off'}>{tr('settings.pushEnable')}</button>
 	{/if}

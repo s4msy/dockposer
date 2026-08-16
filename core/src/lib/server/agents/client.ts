@@ -57,6 +57,8 @@ export interface AgentCompose {
 	content: string;
 	hash: string;
 	env_files: string[];
+	/** true, wenn .dockposer-rollback.yaml im Stack-Ordner liegt */
+	pinned?: boolean;
 }
 
 export const fetchCompose = (baseUrl: string, token: string, stack: string) =>

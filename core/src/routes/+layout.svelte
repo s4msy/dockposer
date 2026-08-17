@@ -7,9 +7,16 @@
 	const showNav = $derived(!['/login', '/setup'].includes(page.url.pathname));
 
 	$effect(() => {
-		if ('serviceWorker' in navigator) {
-			navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('SW-Registrierung:', e));
-		}
+		if (!('serviceWorker' in navigator)) return;
+		navigator.serviceWorker
+			.register('/sw.js', { scope: '/' })
+			.then((reg) => {
+				// Browser cachen den Service Worker. Ohne aktives Nachfragen kann
+				// eine alte Version tagelang weiterlaufen — bei uns z. B. der
+				// Klick-Handler für Benachrichtigungen.
+				reg.update();
+			})
+			.catch((e) => console.warn('SW-Registrierung:', e));
 	});
 
 	// App-Icon-Badge: Anzahl offener Alerts (Badging API — wo verfügbar)

@@ -289,6 +289,18 @@
 		<p style="margin: var(--space-1) 0 0; color: var(--color-text-dim);">
 			{t('stack.pinnedHint', { file: '.dockposer-rollback.yaml' })}
 		</p>
+
+		{#if form?.pinError}<div class="alert-error" role="alert">{form.pinError}</div>{/if}
+		{#if form?.pinRemoved !== undefined}
+			<p role="status" style="color: var(--color-ok);">
+				{form.pinRemoved ? t('stack.pinRemoved') : t('stack.pinNone')}
+			</p>
+		{/if}
+		<form method="POST" action="?/removePin" use:enhance style="margin-top: var(--space-2);">
+			<button style="width: auto; min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);">
+				{t('stack.pinRemove')}
+			</button>
+		</form>
 	</div>
 {/if}
 

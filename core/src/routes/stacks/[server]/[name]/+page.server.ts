@@ -6,7 +6,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
 import { translator } from '$lib/i18n';
 import { decrypt } from '$lib/server/crypto';
-import { fetchCompose, fetchStackPs, putCompose, deleteStack, fetchEditableFiles, fetchFile, putFile, fetchDriftDebug, AgentError } from '$lib/server/agents/client';
+import { fetchCompose, fetchStackPs, putCompose, deleteStack, fetchEditableFiles, fetchFile, putFile, fetchDriftDebug, deletePin, AgentError } from '$lib/server/agents/client';
 import { checkStackUpdates } from '$lib/server/updates/checker';
 import { redirect } from '@sveltejs/kit';
 
@@ -229,6 +229,18 @@ export const actions: Actions = {
 				return fail(502, { driftError: t('stack.driftAgentOld') });
 			}
 			return fail(502, { driftError: e instanceof AgentError ? e.message : t('stack.unknownError') });
+		}
+	},
+
+	removePin: async ({ locals, params }) => {
+		requireUser(locals);
+		const t = translator(locals.locale);
+		const server = await loadServer(params.server);
+		try {
+			const res = await deletePin(server.baseUrl, decrypt(server.agentTokenEnc), params.name);
+			return { pinRemoved: res.removed };
+		} catch (e) {
+			return fail(502, { pinError: e instanceof AgentError ? e.message : t('stack.unknownError') });
 		}
 	},
 

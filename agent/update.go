@@ -278,15 +278,22 @@ func stabilize(ctx context.Context, dir string, window int, before map[string]ps
 			}
 		}
 		if time.Now().After(deadline) {
+			// "starting" heißt: Docker hat noch KEIN Urteil gefällt (start_period
+			// läuft). Das als Fehlschlag zu werten und zurückzurollen war falsch —
+			// Container wie der Nextcloud-AIO-Mastercontainer brauchen mehrere
+			// Minuten. Ein Rollback aus Ungeduld richtet mehr Schaden an als er
+			// verhindert; bleibt der Container dauerhaft krank, meldet das später
+			// ohnehin die Alert-Pipeline.
 			for _, row := range rows {
 				if wasBrokenBefore(before, row.Service) {
 					continue
 				}
 				if row.Health == "starting" {
-					return row.Service + ": Healthcheck nicht rechtzeitig healthy (start_period prüfen)"
+					emit("  ⚠ " + row.Service + ": Healthcheck noch nicht abgeschlossen (start_period läuft) — " +
+						"kein Rollback, Zustand nicht bestätigt")
 				}
 			}
-			return "" // stabil
+			return "" // nichts kaputt → gilt als stabil
 		}
 		if time.Since(lastNote) >= 15*time.Second {
 			emit(fmt.Sprintf("  … stabil (noch %ds)", int(time.Until(deadline).Seconds())))
@@ -398,4 +405,25 @@ func shortDigest(d string) string {
 		return d[:i] + "@sha256:" + d[i+8:i+20] + "…"
 	}
 	return d
+}
+
+// handlePinDelete entfernt die Rollback-Pin-Datei. Bisher ging das nur per SSH —
+// eine Datei, die Dockposer selbst anlegt, muss Dockposer auch wieder aufräumen
+// können. Der Stack läuft dadurch unverändert weiter; erst ein `up -d` wendet
+// die compose.yaml wieder ohne Pin an.
+func handlePinDelete(w http.ResponseWriter, r *http.Request) {
+	dir, ok := stackDir(w, r)
+	if !ok {
+		return
+	}
+	path := filepath.Join(dir, rollbackFile)
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			writeJSON(w, map[string]any{"removed": false, "reason": "keine Pin-Datei vorhanden"})
+			return
+		}
+		httpErr(w, 500, "Pin-Datei nicht löschbar: "+err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"removed": true})
 }

@@ -75,6 +75,7 @@ func main() {
 	mux.HandleFunc("GET /v1/stacks/{name}/drift", handleDriftDebug)
 	mux.HandleFunc("GET /v1/stacks/{name}/images", handleStackImages)
 	mux.HandleFunc("POST /v1/stacks/{name}/update", handleUpdate)
+	mux.HandleFunc("DELETE /v1/stacks/{name}/pin", handlePinDelete)
 	mux.HandleFunc("PUT /v1/stacks/{name}/compose", handleComposePut)
 	mux.HandleFunc("GET /v1/stacks/{name}/files", handleFilesList)
 	mux.HandleFunc("GET /v1/stacks/{name}/file", handleFileGet)

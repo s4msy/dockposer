@@ -312,6 +312,9 @@ export const de = {
 	'stack.driftComposeVerdict': 'Compose-Gegenprobe',
 	'stack.allPinned': 'Alle Images sind per Digest gepinnt — Updates können hier nichts ändern.',
 	'stack.pinnedService': 'per Digest gepinnt',
+	'stack.pinRemove': 'Pin-Datei entfernen',
+	'stack.pinRemoved': 'Pin-Datei entfernt. „up -d" wendet die compose.yaml wieder ohne Pin an.',
+	'stack.pinNone': 'Es lag keine Pin-Datei vor.',
 } as const;
 
 export type MessageKey = keyof typeof de;

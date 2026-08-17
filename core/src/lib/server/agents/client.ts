@@ -234,3 +234,12 @@ export const fetchDriftDebug = (baseUrl: string, token: string, stack: string) =
 		{},
 		30_000
 	);
+
+export const deletePin = (baseUrl: string, token: string, stack: string) =>
+	agentFetch<{ removed: boolean; reason?: string }>(
+		baseUrl,
+		token,
+		`/v1/stacks/${encodeURIComponent(stack)}/pin`,
+		{ method: 'DELETE' },
+		20_000
+	);

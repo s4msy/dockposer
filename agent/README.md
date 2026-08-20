@@ -174,6 +174,17 @@ Dockposer verwaltet diese Anmeldung bewusst nicht — Credential-Verwaltung auf 
 
 ---
 
+# Was überwacht wird — und was nicht
+
+Die Alert-Pipeline bewertet ausschließlich Container, die zu einem Stack im Stacks-Ordner gehören (erkennbar am Compose-Projekt-Label). Bewusst ignoriert werden:
+
+- **Kurzlebige Container ohne Compose-Label** — etwa Job-Container von CI-Runnern (Forgejo Actions, Gitea Actions). Die entstehen und verschwinden im Minutentakt und beenden sich regulär mit Exit 137.
+- **Compose-Stacks außerhalb des Stacks-Ordners** — z. B. Reste anderer Verwaltungswerkzeuge. Sie tauchen in der Übersicht unter „Container außerhalb von …" auf, lösen aber keine Alerts aus.
+
+Dockposer meldet nur, wogegen es auch etwas unternehmen kann. Soll ein Stack überwacht werden, gehört er in den Stacks-Ordner.
+
+---
+
 # Troubleshooting
 
 ## „Agent antwortet mit 500" beim Stack-Löschen

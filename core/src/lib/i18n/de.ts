@@ -315,6 +315,8 @@ export const de = {
 	'stack.pinRemove': 'Pin-Datei entfernen',
 	'stack.pinRemoved': 'Pin-Datei entfernt. „up -d" wendet die compose.yaml wieder ohne Pin an.',
 	'stack.pinNone': 'Es lag keine Pin-Datei vor.',
+	'alerts.resolveAll': 'Alle erledigen',
+	'alerts.confirmResolveAll': 'Alle {count} offenen Alerts als erledigt markieren?',
 } as const;
 
 export type MessageKey = keyof typeof de;

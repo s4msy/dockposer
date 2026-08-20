@@ -54,6 +54,39 @@ class AlertEngine {
 		}
 	}
 
+	// Bekannte Stack-Namen je Server, kurz gecacht. Ohne diesen Filter meldet
+	// die Pipeline jeden Container des Hosts — auch CI-Job-Container oder Reste
+	// anderer Tools, die Dockposer weder verwaltet noch beeinflussen kann.
+	private stackNames = new Map<number, { names: Set<string>; loadedAt: number }>();
+
+	private async managedProjects(serverId: number): Promise<Set<string>> {
+		const cached = this.stackNames.get(serverId);
+		if (cached && Date.now() - cached.loadedAt < 60_000) return cached.names;
+		const rows = await db.select({ name: stacks.name }).from(stacks).where(eq(stacks.serverId, serverId));
+		// Compose normalisiert Ordnernamen zu Projektnamen: klein, nur [a-z0-9_-]
+		const names = new Set(rows.map((r) => r.name.toLowerCase().replace(/[^a-z0-9_-]/g, '')));
+		this.stackNames.set(serverId, { names, loadedAt: Date.now() });
+		return names;
+	}
+
+	/**
+	 * Gehört der Container zu einem Stack, den Dockposer kennt?
+	 *
+	 * Ohne Compose-Projekt-Label ist er per `docker run` oder von einem anderen
+	 * Werkzeug gestartet — nicht unsere Zuständigkeit. Ein unbekanntes Projekt
+	 * kommt von Stacks außerhalb des Stacks-Ordners.
+	 *
+	 * Ausnahme: Solange für einen Server noch gar keine Stacks synchronisiert
+	 * sind, wird nicht gefiltert — sonst bliebe es nach einem Neustart des Cores
+	 * still, bis jemand die Übersicht öffnet.
+	 */
+	private async isManaged(serverId: number, project: string | undefined): Promise<boolean> {
+		if (!project) return false;
+		const known = await this.managedProjects(serverId);
+		if (known.size === 0) return true;
+		return known.has(project.toLowerCase());
+	}
+
 	private async rule(type: AlertType) {
 		if (Date.now() - this.rulesLoadedAt > 30_000) {
 			const rows = await db.select().from(alertRules).where(eq(alertRules.scope, 'global'));
@@ -65,6 +98,12 @@ class AlertEngine {
 			this.rulesLoadedAt = Date.now();
 		}
 		return this.rulesCache.find((r) => r.type === type);
+	}
+
+	/** Nach einem Sync aufrufen, damit neu angelegte Stacks sofort überwacht werden. */
+	invalidateStackCache(serverId?: number) {
+		if (serverId === undefined) this.stackNames.clear();
+		else this.stackNames.delete(serverId);
 	}
 
 	// ── Suppression: eigene Aktionen (down/restart/up über Dockposer) lösen keine Alerts aus ──
@@ -85,6 +124,9 @@ class AlertEngine {
 		const project = attrs['com.docker.compose.project'];
 		const key = `${serverId}:${container}`;
 		const action = evt.Action.startsWith('health_status') ? 'health_status' : evt.Action;
+
+		// Nur Container aus verwalteten Stacks bewerten
+		if (!(await this.isManaged(serverId, project))) return;
 
 		switch (action) {
 			case 'die': {

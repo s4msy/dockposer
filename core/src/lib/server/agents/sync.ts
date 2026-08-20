@@ -3,6 +3,7 @@ import { servers, stacks } from '$lib/server/db/schema';
 import { and, eq, notInArray } from 'drizzle-orm';
 import { decrypt } from '$lib/server/crypto';
 import { checkHealth, fetchStacks } from './client';
+import { engine } from '$lib/server/alerts/engine';
 
 // Zieht Health + Stack-Liste von einem Agent und aktualisiert den DB-Cache.
 // Grundsatz: bei Konflikt gewinnt der Agent/das Dateisystem.
@@ -41,6 +42,9 @@ export async function syncServer(server: typeof servers.$inferSelect): Promise<v
 					}
 				});
 		}
+		// Alert-Engine über den neuen Stand informieren (Filter für verwaltete Container)
+		engine.invalidateStackCache(server.id);
+
 		// Verschwundene Stacks aus dem Cache entfernen (Datei gelöscht/verschoben)
 		const names = agentStacks.map((s) => s.name);
 		await db

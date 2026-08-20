@@ -308,4 +308,6 @@ export const en: Record<MessageKey, string> = {
 	'stack.pinRemove': 'Remove pin file',
 	'stack.pinRemoved': 'Pin file removed. Run “up -d” to apply compose.yaml without the pin.',
 	'stack.pinNone': 'There was no pin file.',
+	'alerts.resolveAll': 'Resolve all',
+	'alerts.confirmResolveAll': 'Mark all {count} open alerts as resolved?',
 };

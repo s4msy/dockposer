@@ -43,6 +43,11 @@ export const actions: Actions = {
 		const id = Number((await request.formData()).get('id'));
 		await db.update(alerts).set({ acknowledgedAt: new Date() }).where(eq(alerts.id, id));
 	},
+	resolveAll: async ({ locals }) => {
+		requireUser(locals);
+		await db.update(alerts).set({ resolvedAt: new Date() }).where(isNull(alerts.resolvedAt));
+	},
+
 	resolve: async ({ locals, request }) => {
 		requireUser(locals);
 		const id = Number((await request.formData()).get('id'));

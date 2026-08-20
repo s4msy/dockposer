@@ -17,6 +17,22 @@
 
 <h1>{t('alerts.title')}</h1>
 
+{#if data.open.length > 1}
+	<form
+		method="POST"
+		action="?/resolveAll"
+		use:enhance={() => {
+			if (!confirm(t('alerts.confirmResolveAll', { count: data.open.length }))) return () => {};
+			return async ({ update }) => update();
+		}}
+		style="margin-bottom: var(--space-3);"
+	>
+		<button style="background: transparent; color: var(--color-text-dim); border: 1px solid var(--color-border);">
+			{t('alerts.resolveAll')} ({data.open.length})
+		</button>
+	</form>
+{/if}
+
 {#if data.open.length === 0}
 	<div class="card"><p>{t('alerts.none')} 🎉</p></div>
 {/if}

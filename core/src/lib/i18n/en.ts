@@ -304,6 +304,7 @@ export const en: Record<MessageKey, string> = {
 	'stack.driftAgentOld': 'The agent on this server is too old for this diagnosis (version 0.3.0 required). Provide the new binary and re-run the installer there.',
 	'stack.driftComposeVerdict': 'Compose cross-check',
 	'stack.allPinned': 'All images are pinned by digest — updates cannot change anything here.',
+	'stack.pinnedNewer': 'The tag now points to a newer image — applying it means editing the digest in compose.yaml.',
 	'stack.pinnedService': 'pinned by digest',
 	'stack.pinRemove': 'Remove pin file',
 	'stack.pinRemoved': 'Pin file removed. Run “up -d” to apply compose.yaml without the pin.',

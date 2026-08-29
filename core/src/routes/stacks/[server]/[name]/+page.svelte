@@ -324,14 +324,19 @@
 				<li style="padding: var(--space-1) 0; display: flex; gap: var(--space-2); align-items: baseline;">
 					{#if u.status === 'update'}<span style="color: var(--color-warn); font-weight: 700;">↑</span>
 					{:else if u.status === 'current'}<span style="color: var(--color-ok);">✓</span>
+					{:else if u.status === 'pinned'}<span style="color: var(--color-text-dim);">🔒</span>
 					{:else}<span style="color: var(--color-text-dim);">?</span>{/if}
 					<span style="flex: 1;">
 						{u.service} <small style="color: var(--color-text-dim);">{u.image}</small>
-						{#if u.image?.includes('@sha256:')}
-							<small style="color: var(--color-warn);">· {t('stack.pinnedService')}</small>
+						{#if u.status === 'pinned' || u.image?.includes('@sha256:')}
+							<small style="color: var(--color-text-dim);">· {t('stack.pinnedService')}</small>
 						{/if}
 						{#if u.status === 'update'}
 							<small style="display: block; color: var(--color-text-dim);">{u.current.slice(7, 19)} → {u.latest.slice(7, 19)}</small>
+						{:else if u.status === 'pinned' && u.newer}
+							<small style="display: block; color: var(--color-text-dim);">
+								{t('stack.pinnedNewer')} <span style="white-space: nowrap;">{u.current.slice(7, 19)} → {u.latest.slice(7, 19)}</span>
+							</small>
 						{:else if u.status === 'unknown'}
 							<small style="display: block; color: var(--color-text-dim);">
 								{#if u.authRequired && u.host}
@@ -349,7 +354,7 @@
 			{/each}
 		</ul>
 	{/if}
-	{#if data.updates.length > 0 && data.updates.every((u: { image?: string }) => u.image?.includes('@sha256:'))}
+	{#if data.updates.length > 0 && data.updates.every((u: { status?: string; image?: string }) => u.status === 'pinned' || u.image?.includes('@sha256:'))}
 		<p style="color: var(--color-warn);">{t('stack.allPinned')}</p>
 	{/if}
 	{#if data.lastUpdateCheck}

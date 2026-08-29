@@ -311,6 +311,7 @@ export const de = {
 	'stack.driftAgentOld': 'Der Agent auf diesem Server ist zu alt für die Diagnose (Version 0.3.0 nötig). Neues Binary bereitstellen und den Installer dort erneut ausführen.',
 	'stack.driftComposeVerdict': 'Compose-Gegenprobe',
 	'stack.allPinned': 'Alle Images sind per Digest gepinnt — Updates können hier nichts ändern.',
+	'stack.pinnedNewer': 'Der Tag zeigt inzwischen auf ein neueres Image — anwendbar nur durch Anpassen des Digests in der compose.yaml.',
 	'stack.pinnedService': 'per Digest gepinnt',
 	'stack.pinRemove': 'Pin-Datei entfernen',
 	'stack.pinRemoved': 'Pin-Datei entfernt. „up -d" wendet die compose.yaml wieder ohne Pin an.',

@@ -13,10 +13,16 @@ export interface ImageRef {
 	host: string;
 	repo: string;
 	tag: string;
+	/** Bei `repo:tag@sha256:…` oder `repo@sha256:…`: der in compose.yaml gepinnte Digest. */
+	digest?: string;
+	/** false, wenn der Tag nicht in der Referenz stand und auf `latest` geraten wurde. */
+	explicitTag: boolean;
 }
 
 export function parseImageRef(ref: string): ImageRef {
-	let rest = ref.split('@')[0];
+	const [beforeAt, afterAt] = ref.split('@');
+	const digest = afterAt?.startsWith('sha256:') ? afterAt : undefined;
+	let rest = beforeAt;
 	let host = 'registry-1.docker.io';
 	const slash = rest.indexOf('/');
 	if (slash > -1) {
@@ -28,13 +34,15 @@ export function parseImageRef(ref: string): ImageRef {
 	}
 	if (host === 'docker.io') host = 'registry-1.docker.io';
 	let tag = 'latest';
+	let explicitTag = false;
 	const colon = rest.lastIndexOf(':');
 	if (colon > -1 && !rest.slice(colon).includes('/')) {
 		tag = rest.slice(colon + 1);
 		rest = rest.slice(0, colon);
+		explicitTag = true;
 	}
 	if (host === 'registry-1.docker.io' && !rest.includes('/')) rest = 'library/' + rest;
-	return { host, repo: rest, tag };
+	return { host, repo: rest, tag, digest, explicitTag };
 }
 
 export interface RegistryCredential {

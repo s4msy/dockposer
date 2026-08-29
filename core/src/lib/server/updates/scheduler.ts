@@ -44,6 +44,9 @@ async function checkAll() {
 		for (const stack of serverStacks) {
 			try {
 				const entries = await checkStackUpdates(server, stack.name);
+				// Nur echte, anwendbare Updates. Status 'pinned' bleibt bewusst außen vor:
+				// ein Update kann an einem per Digest gepinnten Image nichts ändern, der
+				// Lauf wäre garantiert wirkungslos (und erzeugte trotzdem Historie + Last).
 				const hasUpdate = entries.some((e: UpdateEntry) => e.status === 'update');
 				if (hasUpdate && stack.updatePolicy === 'auto') {
 					await runPolicyUpdate(server, stack.name);

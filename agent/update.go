@@ -132,7 +132,12 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 		f.Flush()
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
+	// Bewusst NICHT an r.Context() gekoppelt: Ein Update, dessen `up -d` schon
+	// gelaufen ist, muss zu Ende geführt werden — auch wenn der Zuhörer geht
+	// (Handy sperrt, Core startet neu, Netzwechsel). Sonst bricht der Lauf mitten
+	// im Stabilisierungsfenster ab und landet im Abbruchpfad, obwohl am Stack
+	// nichts falsch ist. Das Timeout bleibt die einzige Reißleine.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 30*time.Minute)
 	defer cancel()
 
 	// 1) Snapshot
@@ -196,6 +201,19 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 	// 4) Stabilisierungsfenster
 	emit(fmt.Sprintf("Stabilisierungsfenster: %d Sekunden …", window))
 	if reason := stabilize(ctx, dir, window, before, emit); reason != "" {
+		// Ein abgebrochener Kontext ist KEIN Befund über den Stack. Früher lief das
+		// in doRollback: Die Pin-Datei wurde geschrieben, das Rollback-`up` scheiterte
+		// am toten Kontext, und im Stack-Ordner blieb eine Datei liegen, die beim
+		// nächsten `up -d` mit Pin ein Downgrade bewirkt hätte.
+		if ctx.Err() != nil {
+			emit("Beobachtung abgebrochen (Zeitlimit) — kein Rollback, Zustand nicht bewertet.")
+			result("failed", map[string]any{
+				"stage":       "stabilize",
+				"reason":      "Beobachtung abgebrochen — Stack unverändert, kein Rollback ausgeführt",
+				"old_digests": oldDigests,
+			})
+			return
+		}
 		emit("Instabil: " + reason + " — Rollback …")
 		doRollback(ctx, dir, w, f, oldDigests, before, emit, result, reason)
 		return
@@ -366,6 +384,17 @@ func doRollback(ctx context.Context, dir string, w http.ResponseWriter, f http.F
 	// womöglich unverändert kaputt ist — und die Ursache lag dann nicht am Update.
 	emit("Prüfe, ob der Rollback geholfen hat …")
 	if stillBroken := stabilize(ctx, dir, 30, before, emit); stillBroken != "" {
+		if ctx.Err() != nil {
+			// Abbruch ist kein Urteil: Das Rollback-`up` lief bereits, der Stack
+			// läuft auf den alten Digests. Die Pin-Datei jetzt zu löschen, wäre
+			// gelogen — sie beschreibt den tatsächlichen Zustand.
+			emit("Gegenprobe abgebrochen — Pin bleibt bestehen, Zustand nicht bestätigt.")
+			result("rolled_back", map[string]any{
+				"reason":      reason + " (Gegenprobe abgebrochen — nicht bestätigt)",
+				"old_digests": oldDigests,
+			})
+			return
+		}
 		emit("⚠ Auch nach dem Rollback instabil: " + stillBroken)
 		emit("Die Ursache liegt damit nicht am Update — die Pin-Datei wurde entfernt.")
 		os.Remove(filepath.Join(dir, rollbackFile)) // nichts pinnen, was nicht hilft

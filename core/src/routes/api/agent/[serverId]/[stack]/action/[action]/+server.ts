@@ -28,36 +28,64 @@ export const POST: RequestHandler = async ({ locals, params }) => {
 
 		let body = upstream.body!;
 		if (params.action === 'update') {
-			// Tee: Stream zum Browser durchreichen UND mitschneiden → update_runs + Alerts
+			// Der Mitschnitt läuft im Hintergrund weiter, auch wenn der Browser abbricht.
+			// Vorher hing das Lesen am `pull` des Client-Streams: Bildschirm aus, Tab in den
+			// Hintergrund oder WLAN→Mobilfunk beendete den Stream, `cancel` kappte damit die
+			// Verbindung zum Agent mitten im Stabilisierungsfenster — und weil kein
+			// `event: result` mehr ankam, wurde ein erfolgreiches Update als fehlgeschlagen
+			// verbucht (Push: „Update-Lauf ohne Ergebnis abgebrochen").
 			const startedAt = new Date();
 			const decoder = new TextDecoder();
-			let buffer = '';
-			let finalized = false;
-			const finalize = async () => {
-				if (finalized) return;
-				finalized = true;
-				await recordUpdateRun(server.id, params.stack, 'manual', buffer, startedAt).catch((e) =>
-					console.error('[updates] Aufzeichnung fehlgeschlagen:', e)
-				);
-			};
 			const reader = upstream.body!.getReader();
+			let buffer = '';
+			// Halter statt loser Variable: Der Controller wird erst im Callback gesetzt,
+			// die Kontrollflussanalyse sähe ihn sonst dauerhaft als null.
+			const sink: { client: ReadableStreamDefaultController<Uint8Array> | null } = { client: null };
+			let queued = 0;
+
 			body = new ReadableStream({
-				async pull(controller) {
-					const { done, value } = await reader.read();
-					if (done) {
-						controller.close();
-						await finalize();
-						return;
-					}
-					buffer += decoder.decode(value, { stream: true });
-					if (buffer.length > 40_000) buffer = buffer.slice(-30_000);
-					controller.enqueue(value);
+				start(controller) {
+					sink.client = controller;
 				},
-				cancel(reason) {
-					reader.cancel(reason);
-					void finalize();
+				cancel() {
+					// Nur den Weg zum Browser aufgeben — der Lauf läuft weiter.
+					sink.client = null;
 				}
-			});
+			}) as typeof body;
+
+			void (async () => {
+				try {
+					for (;;) {
+						const { done, value } = await reader.read();
+						if (done) break;
+						buffer += decoder.decode(value, { stream: true });
+						if (buffer.length > 40_000) buffer = buffer.slice(-30_000);
+						if (sink.client) {
+							try {
+								// Ohne Gegendruck: Wenn der Browser nicht mehr abholt, nicht
+								// unbegrenzt puffern — der Mitschnitt ist das Wichtige.
+								queued += value.byteLength;
+								if (queued > 2_000_000) throw new Error('Client-Puffer voll');
+								sink.client.enqueue(value);
+							} catch {
+								sink.client = null;
+							}
+						}
+					}
+					sink.client?.close();
+				} catch (e) {
+					buffer += `\nStream abgebrochen: ${e}`;
+					try {
+						sink.client?.close();
+					} catch {
+						/* Client war schon weg */
+					}
+				} finally {
+					await recordUpdateRun(server.id, params.stack, 'manual', buffer, startedAt).catch((e) =>
+						console.error('[updates] Aufzeichnung fehlgeschlagen:', e)
+					);
+				}
+			})();
 		}
 
 		return new Response(body, {

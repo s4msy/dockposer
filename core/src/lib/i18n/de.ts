@@ -203,7 +203,7 @@ export const de = {
 	'servers.cleanupHint': 'Jedes Update lässt das alte Image ohne Tag zurück. Entfernt werden ausschließlich solche ungetaggten Images — getaggte Images gestoppter Stacks bleiben liegen, damit nichts nachgeladen werden muss.',
 	'servers.pruneCheck': 'Nachsehen',
 	'servers.pruneRun': 'Freigeben',
-	'servers.pruneFound': '{images} ungetaggte Images, etwa {size} freigebbar.',
+	'servers.pruneFound': '{images} ungetaggte Images, etwa {size} freigebbar (Schätzung).',
 	'servers.pruneNothing': 'Nichts zum Aufräumen.',
 	'servers.pruneDone': '{images} Images entfernt, {size} freigegeben.',
 	'servers.pruneConfirm': '{images} ungetaggte Images endgültig löschen?',

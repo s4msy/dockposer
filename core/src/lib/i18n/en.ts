@@ -196,7 +196,7 @@ export const en: Record<MessageKey, string> = {
 	'servers.cleanupHint': 'Every update leaves the old image behind without a tag. Only those untagged images are removed — tagged images of stopped stacks stay, so nothing has to be pulled again.',
 	'servers.pruneCheck': 'Check',
 	'servers.pruneRun': 'Free up',
-	'servers.pruneFound': '{images} untagged images, about {size} can be freed.',
+	'servers.pruneFound': '{images} untagged images, about {size} can be freed (estimate).',
 	'servers.pruneNothing': 'Nothing to clean up.',
 	'servers.pruneDone': 'Removed {images} images, freed {size}.',
 	'servers.pruneConfirm': 'Permanently delete {images} untagged images?',

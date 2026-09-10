@@ -121,6 +121,7 @@ export const de = {
 	'stack.updates': 'Updates',
 	'stack.checkUpdates': 'Nach Updates suchen',
 	'stack.runUpdate': 'Update (Auto-Rollback)',
+	'stack.checkPaused': 'Gestoppt — die automatische Update-Prüfung pausiert. Der Knopf oben prüft trotzdem.',
 	'stack.lastCheck': 'Letzter Check: {date}',
 	'stack.checkImpossibleAuth': 'Check nicht möglich —',
 	'stack.addCredentials': 'Zugangsdaten für {host} hinterlegen',

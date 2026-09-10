@@ -1,7 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { requireUser } from '$lib/server/guards';
 import { db } from '$lib/server/db';
-import { and, desc, gte, inArray, isNull } from 'drizzle-orm';
+import { and, desc, gte, inArray, isNull, ne } from 'drizzle-orm';
 import { alerts, servers as serversTable, updateRuns } from '$lib/server/db/schema';
 import { syncAll } from '$lib/server/agents/sync';
 import { fetchUnmanaged } from '$lib/server/agents/client';
@@ -72,7 +72,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 				seen.add(run.stackId);
 				if (run.result !== 'success' && run.startedAt >= since) troubled.add(run.stackId);
 			}
-			// b) offener, noch nicht quittierter Alert aus den letzten Tagen
+			// b) offener, noch nicht quittierter Alert aus den letzten Tagen.
+			//    Nur Warnungen und Kritisches. Eine Info-Meldung ist kein Problem,
+			//    das Sichtbarkeit erzwingen darf — sonst hebelt ausgerechnet
+			//    „neue Version verfügbar" den Ausblenden-Filter aus.
 			for (const row of await db
 				.select({ stackId: alerts.stackId })
 				.from(alerts)
@@ -80,6 +83,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 					and(
 						isNull(alerts.resolvedAt),
 						isNull(alerts.acknowledgedAt),
+						ne(alerts.severity, 'info'),
 						gte(alerts.firedAt, since),
 						inArray(alerts.stackId, stackIds)
 					)

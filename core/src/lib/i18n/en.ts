@@ -114,6 +114,7 @@ export const en: Record<MessageKey, string> = {
 	'stack.updates': 'Updates',
 	'stack.checkUpdates': 'Check for updates',
 	'stack.runUpdate': 'Update (auto-rollback)',
+	'stack.checkPaused': 'Stopped — automatic update checks are paused. The button above still checks on demand.',
 	'stack.lastCheck': 'Last checked: {date}',
 	'stack.checkImpossibleAuth': 'Cannot check —',
 	'stack.addCredentials': 'add credentials for {host}',

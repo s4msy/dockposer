@@ -7,7 +7,7 @@ import { decrypt } from '$lib/server/crypto';
 import { agentStream } from '$lib/server/agents/client';
 import { checkStackUpdates, type UpdateEntry } from './checker';
 import { recordUpdateRun } from './run';
-import { syncUpdateAlert } from './notify';
+import { syncUpdateAlert, clearUpdateAlert } from './notify';
 
 const CHECK_INTERVAL_MS = Number(process.env.UPDATE_CHECK_HOURS ?? 6) * 3_600_000;
 const INITIAL_DELAY_MS = 90_000;
@@ -45,6 +45,16 @@ async function checkAll() {
 		const serverStacks = await db.select().from(stacks).where(eq(stacks.serverId, server.id));
 		for (const stack of serverStacks) {
 			try {
+				// Gestoppte Stacks werden nicht geprüft. Ein Stack, den jemand bewusst
+				// heruntergefahren hat (Watchtower, Testkram, Saisonales), ist kein
+				// Rückstand: Die Meldung wäre nutzlos, sie holt den Stack über den
+				// „gestoppte ausblenden"-Filter zurück in die Übersicht — und bei
+				// Policy 'auto' hätte das folgende `up -d` ihn sogar wieder gestartet.
+				// Der Check-Knopf in der Detailansicht prüft weiterhin auf Zuruf.
+				if (stack.state === 'stopped') {
+					await clearUpdateAlert(server.id, stack.name);
+					continue;
+				}
 				const entries = await checkStackUpdates(server, stack.name);
 				// Nur echte, anwendbare Updates. Status 'pinned' bleibt bewusst außen vor:
 				// ein Update kann an einem per Digest gepinnten Image nichts ändern, der

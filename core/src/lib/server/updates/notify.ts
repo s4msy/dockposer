@@ -15,6 +15,11 @@ function digestKey(applicable: UpdateEntry[]): string {
 		.join(',');
 }
 
+/** Offene „Update verfügbar"-Meldung eines Stacks schließen, ohne zu prüfen. */
+export async function clearUpdateAlert(serverId: number, stackName: string) {
+	await engine.updateNoLongerPending(serverId, stackName);
+}
+
 /**
  * Gleicht den offenen 'update_available'-Alert eines Stacks mit dem Prüfergebnis ab.
  *

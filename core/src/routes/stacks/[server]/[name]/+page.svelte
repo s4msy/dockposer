@@ -362,6 +362,11 @@
 			{t('stack.lastCheck', { date: new Date(data.lastUpdateCheck).toLocaleString(page.data.locale ?? 'en') })}
 		</small>
 	{/if}
+	{#if stackStopped}
+		<small style="color: var(--color-text-dim); display: block; margin-bottom: var(--space-2);">
+			{t('stack.checkPaused')}
+		</small>
+	{/if}
 
 	<div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2);">
 		<form method="POST" action="?/checkUpdates" use:enhance>

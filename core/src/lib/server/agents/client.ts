@@ -30,7 +30,19 @@ export async function agentFetch<T>(
 	}).catch((e) => {
 		throw new AgentError(`Agent nicht erreichbar: ${e?.cause?.code ?? e.message}`);
 	});
-	if (!res.ok) throw new AgentError(`Agent antwortet mit ${res.status}`, res.status);
+	if (!res.ok) {
+		// Der Agent legt den Grund in `error` — ohne das Auslesen bekäme der Nutzer
+		// nur „Agent antwortet mit 422" zu sehen, während die eigentliche Auskunft
+		// (welche Zeile der compose.yaml nicht stimmt) im Body verpufft.
+		let detail = '';
+		try {
+			const body = (await res.json()) as { error?: string };
+			detail = typeof body?.error === 'string' ? body.error.trim() : '';
+		} catch {
+			/* kein JSON-Body — dann bleibt es beim Statuscode */
+		}
+		throw new AgentError(detail || `Agent antwortet mit ${res.status}`, res.status);
+	}
 	return res.json() as Promise<T>;
 }
 

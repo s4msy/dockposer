@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -133,14 +134,23 @@ func handleFilePut(w http.ResponseWriter, r *http.Request) {
 	if affectsCompose(name) {
 		perm = 0o600 // Secrets restriktiv anlegen
 	}
+	uid, gid := -1, -1
 	if st, err := os.Stat(path); err == nil {
 		perm = st.Mode().Perm() // bestehende Rechte respektieren
+		// Auch den Eigentümer behalten: Der Agent läuft oft als root, die Dateien
+		// gehören aber dem Menschen, der sie per SSH bearbeitet.
+		if sys, ok := st.Sys().(*syscall.Stat_t); ok {
+			uid, gid = int(sys.Uid), int(sys.Gid)
+		}
 	}
 
 	tmp := filepath.Join(dir, "."+name+".dockposer-tmp")
 	if err := os.WriteFile(tmp, body, perm); err != nil {
 		httpErr(w, 500, "nicht schreibbar: "+err.Error())
 		return
+	}
+	if uid >= 0 {
+		os.Chown(tmp, uid, gid)
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		os.Remove(tmp)

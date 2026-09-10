@@ -491,7 +491,7 @@
 			</small>
 		</form>
 
-		{#if form?.saveError}<div class="alert-error" role="alert" style="margin-top: var(--space-2);">{form.saveError}</div>{/if}
+		{#if form?.saveError}<div class="alert-error" role="alert" style="margin-top: var(--space-2); white-space: pre-wrap; overflow-wrap: anywhere;">{form.saveError}</div>{/if}
 		{#if form?.saved}
 			<p role="status" style="color: var(--color-ok);">
 				{t('stack.composeSaved', { committed: form.committed ? t('stack.andCommitted') : '' })}
@@ -529,7 +529,7 @@
 				<strong>{t('stack.neverCommitted')}</strong>
 			</p>
 
-			{#if form?.fileError}<div class="alert-error" role="alert">{form.fileError}</div>{/if}
+			{#if form?.fileError}<div class="alert-error" role="alert" style="white-space: pre-wrap; overflow-wrap: anywhere;">{form.fileError}</div>{/if}
 			{#if form?.fileSaved}
 				<p role="status" style="color: var(--color-ok);">
 					{t('stack.fileSaved', { file: form.fileName })}

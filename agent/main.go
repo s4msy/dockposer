@@ -31,7 +31,7 @@ import (
 	"time"
 )
 
-const version = "0.3.3"
+const version = "0.3.4"
 
 var (
 	token      string
@@ -836,12 +836,32 @@ func handleComposePut(w http.ResponseWriter, r *http.Request) {
 	defer os.Remove(tmpName)
 	tmp.Write(body)
 	tmp.Close()
-	if out, err := run(r.Context(), dir, 15*time.Second, "docker", "compose", "-f", tmpName, "config", "--quiet"); err != nil {
+	// Gegen dieselbe Dateimenge prüfen, die auch beim Start gilt: Eine Basisdatei
+	// allein kann unvollständig sein (Image erst im Override definiert) und wäre
+	// dann fälschlich „ungültig".
+	args := []string{"compose", "--project-directory", dir, "-f", tmpName}
+	for _, ov := range overrideFiles(dir) {
+		args = append(args, "-f", ov)
+	}
+	args = append(args, "config", "--quiet")
+	if out, err := run(r.Context(), dir, 15*time.Second, "docker", args...); err != nil {
 		httpErr(w, 422, "compose.yaml ungültig: "+strings.TrimSpace(out))
 		return
 	}
 	// Atomar: tmp + rename auf die echte Datei
 	cf := composeFile(dir)
+	// os.CreateTemp legt mit 0600 und der Kennung des Agents an. Ohne diese
+	// Übernahme gehörte die compose.yaml nach jeder Bearbeitung dem Agent-Benutzer
+	// und wäre für alle anderen unlesbar — genau die Sorte Eigentumsproblem, die
+	// uns bei Bind-Mount-Ordnern schon Ärger gemacht hat.
+	if st, err := os.Stat(cf); err == nil {
+		os.Chmod(tmpName, st.Mode().Perm())
+		if sys, ok := st.Sys().(*syscall.Stat_t); ok {
+			os.Chown(tmpName, int(sys.Uid), int(sys.Gid))
+		}
+	} else {
+		os.Chmod(tmpName, 0o644)
+	}
 	if err := os.Rename(tmpName, cf); err != nil {
 		httpErr(w, 500, err.Error())
 		return
@@ -1050,6 +1070,18 @@ func composeFile(dir string) string {
 	return ""
 }
 
+// Override-Dateien eines Stacks, wie Compose sie selbst einlesen würde.
+func overrideFiles(dir string) []string {
+	var out []string
+	for _, pat := range []string{"compose.override.y*ml", "docker-compose.override.y*ml"} {
+		if m, err := filepath.Glob(filepath.Join(dir, pat)); err == nil {
+			out = append(out, m...)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Hash über compose.yaml + Override-Dateien (sortiert, dateinamen-präfixiert)
 func fileExists(p string) bool {
 	st, err := os.Stat(p)
@@ -1061,11 +1093,7 @@ func hashComposeFiles(dir string) string {
 	if cf := composeFile(dir); cf != "" {
 		files = append(files, cf)
 	}
-	for _, pat := range []string{"compose.override.y*ml", "docker-compose.override.y*ml"} {
-		if m, err := filepath.Glob(filepath.Join(dir, pat)); err == nil {
-			files = append(files, m...)
-		}
-	}
+	files = append(files, overrideFiles(dir)...)
 	// .env und *.env fließen in die Interpolation ein und verändern damit die
 	// aufgelöste Konfiguration — für Cache-Invalidierung entscheidend.
 	files = append(files, envLikeFiles(dir)...)

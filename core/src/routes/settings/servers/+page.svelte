@@ -64,6 +64,29 @@
 		{#if form?.sshSaved === server.id}<small role="status" style="color: var(--color-ok);">{t('servers.sshSaved')}</small>{/if}
 
 		<details style="margin-top: var(--space-2);">
+			<summary>{t('servers.editConfig')}</summary>
+			<form method="POST" action="?/edit" use:enhance>
+				<input type="hidden" name="id" value={server.id} />
+				<label for="name-{server.id}">{t('servers.name')}</label>
+				<input id="name-{server.id}" name="name" value={server.name} required />
+
+				<label for="url-{server.id}">{t('servers.agentUrl')}</label>
+				<input id="url-{server.id}" name="baseUrl" value={server.baseUrl} required />
+
+				<label for="path-{server.id}">{t('servers.stacksPath')}</label>
+				<input id="path-{server.id}" name="stacksPath" value={server.stacksPath} />
+
+				<label for="token-{server.id}">{t('servers.newToken')}</label>
+				<input id="token-{server.id}" name="token" placeholder={t('servers.tokenUnchanged')} autocomplete="off" />
+
+				<button>{t('common.save')}</button>
+			</form>
+			{#if form?.edited === server.id}
+				<small role="status" style="color: var(--color-ok);">{t('servers.editSaved')}</small>
+			{/if}
+		</details>
+
+		<details style="margin-top: var(--space-2);">
 			<summary>{t('servers.cleanup')}</summary>
 			<p style="color: var(--color-text-dim);">{t('servers.cleanupHint')}</p>
 

@@ -68,6 +68,44 @@ export const actions: Actions = {
 		return { created: { id: server.id, name, token: customToken ? null : token } };
 	},
 
+	edit: async ({ locals, request }) => {
+		requireUser(locals);
+		const t = translator(locals.locale);
+		const form = await request.formData();
+		const id = Number(form.get('id'));
+		const name = String(form.get('name') ?? '').trim();
+		const baseUrl = String(form.get('baseUrl') ?? '').trim().replace(/\/$/, '');
+		const stacksPath = String(form.get('stacksPath') ?? '').trim() || '~/stacks';
+		const newToken = String(form.get('token') ?? '').trim();
+
+		const [server] = await db.select().from(servers).where(eq(servers.id, id));
+		if (!server) return fail(404, { error: t('stack.serverNotFound') });
+		if (!name) return fail(400, { error: t('servers.nameMissing') });
+		if (!/^https?:\/\//.test(baseUrl)) return fail(400, { error: t('servers.urlInvalid') });
+		if (newToken && !/^[a-f0-9]{64}$/i.test(newToken)) {
+			return fail(400, { error: t('servers.tokenInvalid') });
+		}
+		const [clash] = await db.select({ id: servers.id }).from(servers).where(eq(servers.name, name));
+		if (clash && clash.id !== id) return fail(400, { error: t('servers.exists', { name }) });
+
+		await db
+			.update(servers)
+			.set({
+				name,
+				baseUrl,
+				stacksPath,
+				// Leeres Feld heißt „Token unverändert" — sonst müsste man ihn zum
+				// Ändern der URL jedes Mal heraussuchen.
+				...(newToken ? { agentTokenEnc: encrypt(newToken) } : {})
+			})
+			.where(eq(servers.id, id));
+
+		// Die laufende Event-Verbindung zeigt noch auf das alte Ziel.
+		const { restartServerListener } = await import('$lib/server/alerts/listener');
+		restartServerListener(id);
+		return { edited: id };
+	},
+
 	setSsh: async ({ locals, request }) => {
 		requireUser(locals);
 		const t = translator(locals.locale);

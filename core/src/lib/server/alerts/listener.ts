@@ -112,6 +112,16 @@ async function diskPollLoop() {
 	}
 }
 
+/**
+ * Bestehende Verbindung zu einem Server verwerfen. Nötig nach Änderungen an
+ * URL oder Token: Die laufende Event-Verbindung würde sonst weiter am alten
+ * Ziel hängen, bis sie von selbst abreißt. Neu aufgebaut wird sie vom
+ * Refresh-Loop innerhalb weniger Sekunden.
+ */
+export function restartServerListener(serverId: number) {
+	activeLoops.get(serverId)?.abort();
+}
+
 // Neue/gelöschte Server erkennen, ohne Neustart des Core
 async function serverRefreshLoop() {
 	for (;;) {

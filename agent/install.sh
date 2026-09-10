@@ -114,7 +114,20 @@ if [ "$FROM_SOURCE" = "1" ]; then
 	command -v go >/dev/null || die "--from-source braucht Go (dnf install golang / apt install golang-go)."
 	say "Baue Agent aus dem Quellcode …"
 	src_dir="$(mktemp -d)"
-	for f in go.mod main.go update.go git.go env.go; do
+	# Welche Dateien gebraucht werden, steht im Repo (agent/sources.txt) — eine
+	# hier fest verdrahtete Liste veraltet still, sobald eine Datei dazukommt,
+	# und der Build scheitert dann auf jedem Server statt beim Entwickeln.
+	if curl -fsSL "$BASE/agent/sources.txt" -o "$src_dir/sources.txt" 2>/dev/null; then
+		files="$(grep -v '^[[:space:]]*$' "$src_dir/sources.txt" | tr -d '\r')"
+		rm -f "$src_dir/sources.txt"
+	else
+		# Ältere Repo-Stände ohne Manifest
+		files="go.mod main.go update.go git.go env.go"
+	fi
+	for f in $files; do
+		case "$f" in
+			*/*|..*) die "Ungültiger Eintrag in sources.txt: $f" ;;
+		esac
 		curl -fsSL "$BASE/agent/$f" -o "$src_dir/$f" || die "Download fehlgeschlagen: $BASE/agent/$f"
 	done
 	( cd "$src_dir" && CGO_ENABLED=0 go build -ldflags="-s -w" -o "$tmp_bin" . ) || die "Build fehlgeschlagen."

@@ -1,0 +1,6 @@
+go.mod
+main.go
+update.go
+git.go
+env.go
+prune.go

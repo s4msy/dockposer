@@ -7,6 +7,8 @@ import { decrypt } from '$lib/server/crypto';
 import { agentStream, AgentError } from '$lib/server/agents/client';
 import { engine } from '$lib/server/alerts/engine';
 import { recordUpdateRun } from '$lib/server/updates/run';
+import { checkStackUpdates } from '$lib/server/updates/checker';
+import { syncUpdateAlert } from '$lib/server/updates/notify';
 
 const ALLOWED = new Set(['up', 'down', 'pull', 'restart', 'update']);
 
@@ -84,6 +86,12 @@ export const POST: RequestHandler = async ({ locals, params }) => {
 					await recordUpdateRun(server.id, params.stack, 'manual', buffer, startedAt).catch((e) =>
 						console.error('[updates] Aufzeichnung fehlgeschlagen:', e)
 					);
+					// Frisch nachprüfen: Der Feed stimmt sofort, und eine offene
+					// „Update verfügbar"-Meldung verschwindet, statt bis zum nächsten
+					// Prüflauf (Default 6 h) im Alert-Center stehen zu bleiben.
+					await checkStackUpdates(server, params.stack)
+						.then((entries) => syncUpdateAlert(server.id, params.stack, entries, 'manual', false))
+						.catch((e) => console.warn('[updates] Nachprüfung fehlgeschlagen:', e));
 				}
 			})();
 		}

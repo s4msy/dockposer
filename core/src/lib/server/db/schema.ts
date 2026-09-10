@@ -12,6 +12,7 @@ export const alertType = [
 	'oom_kill',
 	'pull_failed',
 	'update_rolled_back',
+	'update_available',
 	'disk_space',
 	'agent_offline',
 	'update_success'

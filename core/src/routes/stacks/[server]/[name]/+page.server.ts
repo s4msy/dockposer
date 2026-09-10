@@ -8,6 +8,7 @@ import { translator } from '$lib/i18n';
 import { decrypt } from '$lib/server/crypto';
 import { fetchCompose, fetchStackPs, putCompose, deleteStack, fetchEditableFiles, fetchFile, putFile, fetchDriftDebug, deletePin, AgentError } from '$lib/server/agents/client';
 import { checkStackUpdates } from '$lib/server/updates/checker';
+import { syncUpdateAlert } from '$lib/server/updates/notify';
 import { redirect } from '@sveltejs/kit';
 
 async function loadServer(serverId: string) {
@@ -113,7 +114,9 @@ export const actions: Actions = {
 		const t = translator(locals.locale);
 		const server = await loadServer(params.server);
 		try {
-			await checkStackUpdates(server, params.name);
+			const entries = await checkStackUpdates(server, params.name);
+			// Der Mensch sieht das Ergebnis gerade selbst — nur aufräumen, nicht pushen.
+			await syncUpdateAlert(server.id, params.name, entries, 'manual', false).catch(() => {});
 			return { checked: true };
 		} catch (e) {
 			const msg = e instanceof AgentError ? e.message : t('stack.checkFailed');

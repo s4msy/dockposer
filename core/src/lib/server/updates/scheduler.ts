@@ -7,6 +7,7 @@ import { decrypt } from '$lib/server/crypto';
 import { agentStream } from '$lib/server/agents/client';
 import { checkStackUpdates, type UpdateEntry } from './checker';
 import { recordUpdateRun } from './run';
+import { syncUpdateAlert } from './notify';
 
 const CHECK_INTERVAL_MS = Number(process.env.UPDATE_CHECK_HOURS ?? 6) * 3_600_000;
 const INITIAL_DELAY_MS = 90_000;
@@ -34,7 +35,8 @@ async function runPolicyUpdate(server: typeof servers.$inferSelect, stackName: s
 	}
 	await recordUpdateRun(server.id, stackName, 'policy', buffer, startedAt);
 	// Nach dem Lauf frisch prüfen, damit der Feed stimmt
-	await checkStackUpdates(server, stackName).catch(() => {});
+	const after = await checkStackUpdates(server, stackName).catch(() => null);
+	if (after) await syncUpdateAlert(server.id, stackName, after, 'auto', false).catch(() => {});
 }
 
 async function checkAll() {
@@ -50,6 +52,9 @@ async function checkAll() {
 				const hasUpdate = entries.some((e: UpdateEntry) => e.status === 'update');
 				if (hasUpdate && stack.updatePolicy === 'auto') {
 					await runPolicyUpdate(server, stack.name);
+				} else {
+					// Manuelle Stacks: einmal pro neuer Version aufs Handy melden
+					await syncUpdateAlert(server.id, stack.name, entries, stack.updatePolicy, true);
 				}
 			} catch (e) {
 				console.warn(`[updates] Check fehlgeschlagen ${server.name}/${stack.name}:`, e);

@@ -45,7 +45,8 @@ class AlertEngine {
 			{ type: 'disk_space', thresholdJson: JSON.stringify({ free_percent: 10 }) },
 			{ type: 'pull_failed' },
 			{ type: 'update_rolled_back' },
-			{ type: 'update_success' }
+			{ type: 'update_success' },
+			{ type: 'update_available' }
 		];
 		for (const def of defaults) {
 			const [existing] = await db.select({ id: alertRules.id }).from(alertRules)
@@ -222,6 +223,64 @@ class AlertEngine {
 				: `${changedServices.slice(0, MAX_NAMED).join(', ')} +${changedServices.length - MAX_NAMED}`;
 		await this.fire('update_success', 'info', serverId, undefined, stackName,
 			'alert.updateSuccess', { stack: stackName, services }, true);
+	}
+
+	// ── Verfügbare Updates (Stacks auf Policy 'manual') ──
+	/**
+	 * Meldet einmal pro tatsächlich neuer Version, nicht pro Prüflauf. Der
+	 * Digest-Schlüssel steckt in den Alert-Parametern: Bleibt er gleich, war die
+	 * Meldung schon draußen — sonst käme alle 6 Stunden dieselbe Nachricht.
+	 * Erscheint eine noch neuere Version, wird der offene Alert ersetzt.
+	 */
+	async updateAvailable(
+		serverId: number,
+		stackName: string,
+		services: string[],
+		digestKey: string
+	) {
+		if (!services.length) return;
+		if (!(await this.rule('update_available'))?.enabled) return;
+		const [open] = await db
+			.select({ id: alerts.id, params: alerts.messageParamsJson })
+			.from(alerts)
+			.where(
+				and(
+					eq(alerts.ruleType, 'update_available'),
+					eq(alerts.serverId, serverId),
+					eq(alerts.containerName, stackName),
+					isNull(alerts.resolvedAt)
+				)
+			)
+			.limit(1);
+		if (open) {
+			let previous = '';
+			try {
+				previous = (JSON.parse(open.params ?? '{}') as { key?: string }).key ?? '';
+			} catch {
+				/* Altbestand ohne Schlüssel → wie „unbekannt" behandeln */
+			}
+			if (previous === digestKey) return;
+			await db.update(alerts).set({ resolvedAt: new Date() }).where(eq(alerts.id, open.id));
+		}
+		const MAX_NAMED = 4;
+		const list =
+			services.length <= MAX_NAMED
+				? services.join(', ')
+				: `${services.slice(0, MAX_NAMED).join(', ')} +${services.length - MAX_NAMED}`;
+		await this.fire(
+			'update_available',
+			'info',
+			serverId,
+			stackName.toLowerCase().replace(/[^a-z0-9_-]/g, ''),
+			stackName,
+			'alert.updateAvailable',
+			{ stack: stackName, services: list, key: digestKey }
+		);
+	}
+
+	/** Update eingespielt oder Image zurückgezogen → offene Meldung schließen. */
+	async updateNoLongerPending(serverId: number, stackName: string) {
+		await this.resolve(serverId, stackName, ['update_available']);
 	}
 
 	// ── Server-Ebene: Agent offline / Disk ──

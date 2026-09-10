@@ -159,7 +159,12 @@ export const pushSubscriptions = sqliteTable('push_subscriptions', {
 	createdAt: integer('created_at', { mode: 'timestamp' })
 		.notNull()
 		.$defaultFn(() => new Date()),
-	lastSuccessAt: integer('last_success_at', { mode: 'timestamp' })
+	lastSuccessAt: integer('last_success_at', { mode: 'timestamp' }),
+	// Fehlerzustand je Empfänger: Ohne das merkt niemand, dass die Zustellung
+	// seit Wochen scheitert — ein Alarmwerkzeug, das still verstummt, ist
+	// schlimmer als gar keins.
+	lastErrorAt: integer('last_error_at', { mode: 'timestamp' }),
+	lastError: text('last_error')
 });
 
 // ── Updates (Audit) ─────────────────────────────────────────────────────

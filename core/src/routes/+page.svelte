@@ -10,6 +10,19 @@
 
 <h1>Dockposer</h1>
 
+{#if data.servers.length > 0 && (data.push.total === 0 || data.push.failing >= data.push.total)}
+	<a
+		href="/settings"
+		class="card"
+		style="display: block; border-color: var(--color-crit); color: inherit; text-decoration: none;"
+	>
+		<strong style="color: var(--color-crit);" role="alert">{t('overview.pushBrokenTitle')}</strong>
+		<p style="color: var(--color-text-dim); margin: 0;">
+			{data.push.total === 0 ? t('overview.pushNone') : t('overview.pushFailing')}
+		</p>
+	</a>
+{/if}
+
 {#if data.servers.length === 0}
 	<div class="card">
 		<p>{t('overview.noServers')}</p>

@@ -302,6 +302,42 @@
 		<button onclick={enablePush} disabled={pushState !== 'off'}>{tr('settings.pushEnable')}</button>
 	{/if}
 
+	{#if data.pushHealth.total > 0}
+		<div style="margin-top: var(--space-3); border-top: 1px solid var(--color-border); padding-top: var(--space-3);">
+			{#if data.pushHealth.failing > 0}
+				<p style="color: var(--color-crit);" role="alert">
+					{tr('settings.pushFailingCount', { count: data.pushHealth.failing })}
+					{#if data.pushHealth.lastError}<br /><small>{data.pushHealth.lastError}</small>{/if}
+				</p>
+			{:else if data.pushHealth.lastSuccessAt}
+				<small style="color: var(--color-text-dim);">
+					{tr('settings.pushLastSuccess', {
+						date: new Date(data.pushHealth.lastSuccessAt).toLocaleString(page.data.locale ?? 'en')
+					})}
+				</small>
+			{:else}
+				<small style="color: var(--color-text-dim);">{tr('settings.pushNeverSent')}</small>
+			{/if}
+
+			{#if form?.testError}
+				<div class="alert-error" role="alert">{tr('settings.pushTestFailed', { error: form.testError })}</div>
+			{/if}
+			{#if form?.testSent}
+				<p role="status" style="color: var(--color-ok);">{tr('settings.pushTestSent', { count: form.testSent })}</p>
+			{/if}
+			<form method="POST" action="?/testPush" use:enhance style="margin-top: var(--space-2);">
+				<button style="background: transparent; color: var(--color-text); border: 1px solid var(--color-border);">
+					{tr('settings.pushTest')}
+				</button>
+			</form>
+			{#if data.pushHealth.heartbeatDays > 0}
+				<small style="color: var(--color-text-dim); display: block; margin-top: var(--space-2);">
+					{tr('settings.pushHeartbeatHint', { days: data.pushHealth.heartbeatDays })}
+				</small>
+			{/if}
+		</div>
+	{/if}
+
 	<details style="margin-top: var(--space-3);">
 		<summary>{tr('settings.ntfyFallback')}</summary>
 		{#if form?.ntfyError}<div class="alert-error" role="alert">{form.ntfyError}</div>{/if}

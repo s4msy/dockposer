@@ -39,6 +39,8 @@ const THEMES = [
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = requireUser(locals);
 	const { vapidPublicKey } = await import('$lib/server/push/vapid');
+	const { pushHealth } = await import('$lib/server/push/dispatch');
+	const health = await pushHealth(user.id);
 	const subs = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, user.id));
 	const ruleRows = await db.select().from(alertRules).where(eq(alertRules.scope, 'global'));
 	const rules = ALERT_TYPE_ORDER.flatMap((type) => {
@@ -64,6 +66,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		vapidPublicKey,
 		webpushCount: subs.filter((s) => s.transport === 'webpush').length,
 		ntfyTopic: subs.find((s) => s.transport === 'ntfy')?.ntfyTopic ?? '',
+		pushHealth: health,
 		passkeys
 	};
 };
@@ -137,6 +140,14 @@ export const actions: Actions = {
 	},
 
 	// ntfy-Fallback: eine Topic-URL pro User
+	testPush: async ({ locals }) => {
+		const user = requireUser(locals);
+		const { sendTestPush } = await import('$lib/server/push/dispatch');
+		const { sent, errors } = await sendTestPush(user.id);
+		if (!sent) return fail(502, { testError: errors[0] ?? 'no-recipients' });
+		return { testSent: sent };
+	},
+
 	saveNtfy: async ({ locals, request }) => {
 		const user = requireUser(locals);
 		const topic = String((await request.formData()).get('ntfyTopic') ?? '').trim();

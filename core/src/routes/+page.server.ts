@@ -101,5 +101,17 @@ export const load: PageServerLoad = async ({ locals }) => {
 		return false;
 	});
 
-	return { servers, stacks: visibleStacks, unmanaged, hiddenPerServer, hideStopped };
+	// Zustand des Alarmwegs. Ein Werkzeug, das nicht mehr benachrichtigen kann,
+	// muss das dort sagen, wo man täglich hinsieht — nicht in den Einstellungen.
+	const { pushHealth } = await import('$lib/server/push/dispatch');
+	const push = await pushHealth();
+
+	return {
+		servers,
+		stacks: visibleStacks,
+		unmanaged,
+		hiddenPerServer,
+		hideStopped,
+		push: { total: push.total, failing: push.failing }
+	};
 };

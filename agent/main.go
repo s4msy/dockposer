@@ -31,7 +31,7 @@ import (
 	"time"
 )
 
-const version = "0.3.1"
+const version = "0.3.2"
 
 var (
 	token      string
@@ -87,6 +87,8 @@ func main() {
 	mux.HandleFunc("POST /v1/stacks/{name}/down", action("down"))
 	mux.HandleFunc("POST /v1/stacks/{name}/pull", action("pull"))
 	mux.HandleFunc("POST /v1/stacks/{name}/restart", action("restart"))
+	mux.HandleFunc("GET /v1/prune/images", handlePruneInfo)
+	mux.HandleFunc("POST /v1/prune/images", handlePrune)
 	mux.HandleFunc("GET /v1/events", handleEvents)
 	mux.HandleFunc("GET /v1/containers/{id}/logs", handleLogs)
 

@@ -17,6 +17,13 @@
 		copied = true;
 		setTimeout(() => (copied = false), 2000);
 	}
+
+	// GB/MB für die Anzeige — Docker rechnet dezimal, wir bleiben dabei.
+	function formatBytes(bytes: number): string {
+		if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+		if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
+		return `${Math.round(bytes / 1e3)} kB`;
+	}
 </script>
 
 <h1>{t('servers.title')}</h1>
@@ -55,6 +62,46 @@
 			<button style="width: auto;">OK</button>
 		</form>
 		{#if form?.sshSaved === server.id}<small role="status" style="color: var(--color-ok);">{t('servers.sshSaved')}</small>{/if}
+
+		<details style="margin-top: var(--space-2);">
+			<summary>{t('servers.cleanup')}</summary>
+			<p style="color: var(--color-text-dim);">{t('servers.cleanupHint')}</p>
+
+			{#if form?.prune?.id === server.id}
+				<p role="status" style="color: {form.prune.done ? 'var(--color-ok)' : 'inherit'};">
+					{#if form.prune.done}
+						{t('servers.pruneDone', { images: form.prune.images, size: formatBytes(form.prune.bytes) })}
+					{:else if form.prune.images === 0}
+						{t('servers.pruneNothing')}
+					{:else}
+						{t('servers.pruneFound', { images: form.prune.images, size: formatBytes(form.prune.bytes) })}
+					{/if}
+				</p>
+			{/if}
+
+			<div style="display: flex; gap: var(--space-2);">
+				<form method="POST" action="?/pruneInfo" use:enhance style="flex: 1;">
+					<input type="hidden" name="id" value={server.id} />
+					<button style="background: transparent; color: var(--color-text); border: 1px solid var(--color-border); width: 100%;">
+						{t('servers.pruneCheck')}
+					</button>
+				</form>
+				{#if form?.prune?.id === server.id && !form.prune.done && form.prune.images > 0}
+					<form
+						method="POST"
+						action="?/prune"
+						use:enhance={() => {
+							if (!confirm(t('servers.pruneConfirm', { images: form?.prune?.images ?? 0 }))) return () => {};
+							return async ({ update }) => update({ reset: false });
+						}}
+						style="flex: 1;"
+					>
+						<input type="hidden" name="id" value={server.id} />
+						<button style="width: 100%;">{t('servers.pruneRun')}</button>
+					</form>
+				{/if}
+			</div>
+		</details>
 
 		<details style="margin-top: var(--space-2);">
 			<summary>

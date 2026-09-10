@@ -243,3 +243,20 @@ export const deletePin = (baseUrl: string, token: string, stack: string) =>
 		{ method: 'DELETE' },
 		20_000
 	);
+
+// ── Aufräumen ───────────────────────────────────────────────────────────
+export interface AgentPrune {
+	images: number;
+	bytes: number;
+	error?: string;
+	output?: string;
+}
+
+/** Was ließe sich freigeben? Reine Auskunft, verändert nichts. */
+export const fetchPruneInfo = (baseUrl: string, token: string) =>
+	agentFetch<AgentPrune>(baseUrl, token, '/v1/prune/images', {}, 20_000);
+
+/** Ungetaggte Images löschen. Antwort enthält die tatsächlich freigegebene Menge. */
+export const runPrune = (baseUrl: string, token: string) =>
+	// Löschen vieler Ebenen dauert auf langsamen Platten spürbar — großzügiges Limit.
+	agentFetch<AgentPrune>(baseUrl, token, '/v1/prune/images', { method: 'POST' }, 180_000);

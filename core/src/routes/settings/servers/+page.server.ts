@@ -6,7 +6,7 @@ import { servers } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
 import { translator, type Translator } from '$lib/i18n';
-import { checkHealth, AgentError } from '$lib/server/agents/client';
+import { checkHealth, fetchPruneInfo, runPrune, AgentError } from '$lib/server/agents/client';
 import { localZone, parseHhMm } from '$lib/server/alerts/quiet';
 import { decrypt, encrypt } from '$lib/server/crypto';
 
@@ -77,6 +77,36 @@ export const actions: Actions = {
 		if (!sshCheck.ok) return fail(400, { error: sshCheck.error });
 		await db.update(servers).set({ sshUrl: sshCheck.value }).where(eq(servers.id, id));
 		return { sshSaved: id };
+	},
+
+	pruneInfo: async ({ locals, request }) => {
+		requireUser(locals);
+		const t = translator(locals.locale);
+		const form = await request.formData();
+		const id = Number(form.get('id'));
+		const [server] = await db.select().from(servers).where(eq(servers.id, id));
+		if (!server) return fail(404, { error: t('stack.serverNotFound') });
+		try {
+			const info = await fetchPruneInfo(server.baseUrl, decrypt(server.agentTokenEnc));
+			return { prune: { id, images: info.images, bytes: info.bytes, done: false } };
+		} catch (e) {
+			return fail(502, { error: e instanceof AgentError ? e.message : String(e) });
+		}
+	},
+
+	prune: async ({ locals, request }) => {
+		requireUser(locals);
+		const t = translator(locals.locale);
+		const form = await request.formData();
+		const id = Number(form.get('id'));
+		const [server] = await db.select().from(servers).where(eq(servers.id, id));
+		if (!server) return fail(404, { error: t('stack.serverNotFound') });
+		try {
+			const res = await runPrune(server.baseUrl, decrypt(server.agentTokenEnc));
+			return { prune: { id, images: res.images, bytes: res.bytes, done: true } };
+		} catch (e) {
+			return fail(502, { error: e instanceof AgentError ? e.message : String(e) });
+		}
 	},
 
 	mute: async ({ locals, request }) => {

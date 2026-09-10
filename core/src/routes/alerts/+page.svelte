@@ -48,6 +48,13 @@
 			{data.serverNames[alert.serverId] ?? `Server ${alert.serverId}`} · {fmtTime(alert.firedAt)}
 			{#if alert.acknowledgedAt}· {t('alerts.acked')}{/if}
 		</small>
+		{#if alert.ruleType === 'disk_space'}
+			<!-- Die häufigste Ursache sind alte Images aus unseren eigenen Updates —
+			     hier steht der Weg dorthin, statt dass man ihn suchen muss. -->
+			<p style="margin: 0 0 var(--space-2);">
+				<a href="/settings/servers">{t('alerts.diskCleanup')}</a>
+			</p>
+		{/if}
 		<div style="display: flex; gap: var(--space-2);">
 			{#if !alert.acknowledgedAt}
 				<form method="POST" action="?/ack" use:enhance style="flex: 1;">

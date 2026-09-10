@@ -77,10 +77,13 @@ async function fetchRegistryToken(wwwAuth: string, cred?: RegistryCredential): P
 async function authedFetch(
 	url: string,
 	method: 'HEAD' | 'GET',
-	cred?: RegistryCredential
+	cred?: RegistryCredential,
+	// Blobs sind keine Manifeste — mit der Manifest-Accept-Liste antworten
+	// manche Registries darauf mit 406.
+	accept = ACCEPT
 ): Promise<Response | null> {
 	try {
-		let res = await fetch(url, { method, headers: { Accept: ACCEPT }, signal: AbortSignal.timeout(10_000) });
+		let res = await fetch(url, { method, headers: { Accept: accept }, signal: AbortSignal.timeout(10_000) });
 		if (res.status === 401) {
 			const wwwAuth = res.headers.get('www-authenticate') ?? '';
 			if (/^bearer/i.test(wwwAuth)) {
@@ -88,7 +91,7 @@ async function authedFetch(
 				if (!token) return null; // ohne (gültige) Credentials → „Check nicht möglich"
 				res = await fetch(url, {
 					method,
-					headers: { Accept: ACCEPT, Authorization: `Bearer ${token}` },
+					headers: { Accept: accept, Authorization: `Bearer ${token}` },
 					signal: AbortSignal.timeout(10_000)
 				});
 			} else if (cred) {
@@ -96,7 +99,7 @@ async function authedFetch(
 				res = await fetch(url, {
 					method,
 					headers: {
-						Accept: ACCEPT,
+						Accept: accept,
 						Authorization: 'Basic ' + Buffer.from(`${cred.username}:${cred.secret}`).toString('base64')
 					},
 					signal: AbortSignal.timeout(10_000)
@@ -145,4 +148,100 @@ export async function manifestChildDigests(ref: ImageRef, cred?: RegistryCredent
 		/* kein Index/Liste — dann gibt es keine Kinder */
 	}
 	return [];
+}
+
+// ── Herkunft und Bauzeitpunkt eines Images ──────────────────────────────
+//
+// Beantwortet die Frage, die bei einer Update-Meldung als erstes aufkommt:
+// Was ändert sich, und ist das überhaupt eine neue Version? Beides steht in
+// den OCI-Labels bzw. im Config-Blob des Images — erreichbar über zwei
+// zusätzliche GETs, die nur bei tatsächlich gefundenen Updates anfallen.
+
+export interface ImageMeta {
+	/** ISO-Zeitpunkt des Builds (`created` im Config-Blob). */
+	created?: string;
+	/** org.opencontainers.image.version — oft der Git-Tag. */
+	version?: string;
+	/** org.opencontainers.image.revision — der Commit. */
+	revision?: string;
+	/** org.opencontainers.image.source — Repository-URL. */
+	source?: string;
+	/** Daraus abgeleitete Release-Seite, wenn die Quelle bekannt ist. */
+	releases?: string;
+}
+
+/** Aus der Quell-URL die Release-Übersicht ableiten (GitHub, Forgejo, Gitea, GitLab). */
+export function releasesUrl(source: string): string | undefined {
+	try {
+		const url = new URL(source.replace(/^git\+/, '').replace(/\.git$/, ''));
+		if (!/^https?:$/.test(url.protocol)) return undefined;
+		const parts = url.pathname.split('/').filter(Boolean);
+		if (parts.length < 2) return undefined;
+		// GitLab nennt es /-/releases, alle anderen /releases
+		const suffix = url.hostname.includes('gitlab') ? '-/releases' : 'releases';
+		return `${url.origin}/${parts.slice(0, 2).join('/')}/${suffix}`;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Metadaten zu einem konkreten Digest (oder Tag). Bei Multi-Arch wird das
+ * linux/amd64-Manifest gewählt — die Labels sind über die Architekturen hinweg
+ * praktisch immer identisch, und uns interessiert nur Herkunft und Bauzeit.
+ */
+export async function imageMeta(
+	ref: ImageRef,
+	reference: string,
+	cred?: RegistryCredential
+): Promise<ImageMeta | null> {
+	const res = await authedFetch(`https://${ref.host}/v2/${ref.repo}/manifests/${reference}`, 'GET', cred);
+	if (!res) return null;
+	let manifest: {
+		manifests?: { digest: string; platform?: { os?: string; architecture?: string } }[];
+		config?: { digest?: string };
+	};
+	try {
+		manifest = await res.json();
+	} catch {
+		return null;
+	}
+
+	// Manifestliste → passendes Plattform-Manifest nachladen
+	if (Array.isArray(manifest.manifests) && manifest.manifests.length) {
+		const pick =
+			manifest.manifests.find(
+				(m) => m.platform?.os === 'linux' && m.platform?.architecture === 'amd64'
+			) ?? manifest.manifests.find((m) => m.platform?.os === 'linux') ?? manifest.manifests[0];
+		if (!pick?.digest) return null;
+		const inner = await authedFetch(`https://${ref.host}/v2/${ref.repo}/manifests/${pick.digest}`, 'GET', cred);
+		if (!inner) return null;
+		try {
+			manifest = await inner.json();
+		} catch {
+			return null;
+		}
+	}
+
+	const configDigest = manifest.config?.digest;
+	if (!configDigest) return null;
+	const blob = await authedFetch(`https://${ref.host}/v2/${ref.repo}/blobs/${configDigest}`, 'GET', cred, '*/*');
+	if (!blob) return null;
+	try {
+		const body = (await blob.json()) as {
+			created?: string;
+			config?: { Labels?: Record<string, string> };
+		};
+		const labels = body.config?.Labels ?? {};
+		const source = labels['org.opencontainers.image.source'];
+		return {
+			created: body.created,
+			version: labels['org.opencontainers.image.version'],
+			revision: labels['org.opencontainers.image.revision']?.slice(0, 12),
+			source,
+			releases: source ? releasesUrl(source) : undefined
+		};
+	} catch {
+		return null;
+	}
 }

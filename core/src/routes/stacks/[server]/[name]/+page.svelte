@@ -333,6 +333,22 @@
 						{/if}
 						{#if u.status === 'update'}
 							<small style="display: block; color: var(--color-text-dim);">{u.current.slice(7, 19)} → {u.latest.slice(7, 19)}</small>
+							{#if u.newMeta}
+								<small style="display: block; color: var(--color-text-dim);">
+									{#if u.newMeta.version}{u.newMeta.version}{:else if u.newMeta.revision}{u.newMeta.revision}{/if}
+									{#if u.newMeta.created}
+										· {t('stack.builtAt', { date: new Date(u.newMeta.created).toLocaleString(page.data.locale ?? 'en') })}
+									{/if}
+									{#if u.oldMeta?.created}
+										<br />{t('stack.runningBuild', {
+											date: new Date(u.oldMeta.created).toLocaleString(page.data.locale ?? 'en')
+										})}
+									{/if}
+									{#if u.newMeta.releases}
+										<br /><a href={u.newMeta.releases} target="_blank" rel="noopener noreferrer">{t('stack.releaseNotes')}</a>
+									{/if}
+								</small>
+							{/if}
 						{:else if u.status === 'pinned' && u.newer}
 							<small style="display: block; color: var(--color-text-dim);">
 								{t('stack.pinnedNewer')} <span style="white-space: nowrap;">{u.current.slice(7, 19)} → {u.latest.slice(7, 19)}</span>

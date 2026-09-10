@@ -3,7 +3,7 @@ import { stacks, type servers } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { decrypt } from '$lib/server/crypto';
 import { fetchImages } from '$lib/server/agents/client';
-import { parseImageRef, registryDigest, manifestChildDigests } from './registry';
+import { parseImageRef, registryDigest, manifestChildDigests, imageMeta, type ImageMeta } from './registry';
 import { credentialFor } from './credentials';
 
 export interface UpdateEntry {
@@ -20,6 +20,10 @@ export interface UpdateEntry {
 	/** Bei 'unknown': Host, für den Zugangsdaten fehlen könnten. */
 	host?: string;
 	authRequired?: boolean;
+	/** Nur bei 'update': Herkunft und Bauzeit — beantwortet „ist das wirklich neu?". */
+	newMeta?: ImageMeta;
+	/** Dasselbe für das laufende Image, als Vergleichspunkt. */
+	oldMeta?: ImageMeta;
 }
 
 type Server = typeof servers.$inferSelect;
@@ -89,6 +93,25 @@ export async function checkStackUpdates(server: Server, stackName: string): Prom
 				latest,
 				status: 'pinned',
 				newer: status === 'update'
+			});
+			continue;
+		}
+		if (status === 'update') {
+			// Zwei zusätzliche Abfragen je Seite, aber nur bei echten Updates:
+			// Ohne Bauzeitpunkt bleibt jede Meldung eine Behauptung, die man nur
+			// glauben oder anzweifeln kann.
+			const [newMeta, oldMeta] = await Promise.all([
+				imageMeta(ref, latest, cred).catch(() => null),
+				current ? imageMeta(ref, current, cred).catch(() => null) : Promise.resolve(null)
+			]);
+			entries.push({
+				service: img.service,
+				image: img.image,
+				current,
+				latest,
+				status,
+				...(newMeta ? { newMeta } : {}),
+				...(oldMeta ? { oldMeta } : {})
 			});
 			continue;
 		}

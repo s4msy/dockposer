@@ -6,6 +6,7 @@ import { db } from '$lib/server/db';
 import { alertRules, alerts, servers, stacks, alertType } from '$lib/server/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import { translator, type MessageKey } from '$lib/i18n';
+import { isQuiet } from './quiet';
 
 type AlertType = (typeof alertType)[number];
 type Severity = 'info' | 'warning' | 'critical';
@@ -284,11 +285,11 @@ class AlertEngine {
 	}
 
 	// ── Server-Ebene: Agent offline / Disk ──
-	async agentOffline(serverId: number, serverName: string) {
-		if ((await this.rule('agent_offline'))?.enabled) {
-			await this.fire('agent_offline', 'critical', serverId, undefined, undefined,
-				'alert.agentOffline', { server: serverName });
-		}
+	/** Rückgabe: true, wenn tatsächlich alarmiert wurde (nicht in Ruhezeit). */
+	async agentOffline(serverId: number, serverName: string): Promise<boolean> {
+		if (!(await this.rule('agent_offline'))?.enabled) return false;
+		return this.fire('agent_offline', 'critical', serverId, undefined, undefined,
+			'alert.agentOffline', { server: serverName });
 	}
 
 	async agentOnline(serverId: number) {
@@ -315,9 +316,14 @@ class AlertEngine {
 		// transient: sofort als erledigt ablegen. Für reine Erfolgsmeldungen —
 		// sie sollen pushen und im Verlauf stehen, aber weder den Badge-Zähler
 		// hochtreiben noch (per Dedup) die nächste gleichartige Meldung blockieren.
-		transient = false) {
+		transient = false): Promise<boolean> {
 		// Deutsch als gespeicherter Fallback; die Anzeige übersetzt über den Schlüssel.
 		const message = translator('de')(messageKey, params);
+		// Ruhephase: Der Vorgang wird protokolliert (sonst fehlt er im Verlauf),
+		// aber sofort als erledigt abgelegt und nicht zugestellt. Der Aufrufer
+		// erfährt über den Rückgabewert, dass nichts rausgegangen ist — die
+		// Offline-Erkennung nutzt das, um es nach dem Fenster erneut zu versuchen.
+		const quiet = await this.isQuietFor(serverId);
 		const conditions = [
 			eq(alerts.ruleType, type),
 			eq(alerts.serverId, serverId),
@@ -325,7 +331,7 @@ class AlertEngine {
 			...(container ? [eq(alerts.containerName, container)] : [])
 		];
 		const [open] = await db.select({ id: alerts.id }).from(alerts).where(and(...conditions)).limit(1);
-		if (open) return; // kein Re-Alert solange unresolved
+		if (open) return false; // kein Re-Alert solange unresolved
 
 		// Crash-Loop ersetzt einen offenen container_exit desselben Containers
 		if (type === 'crash_loop' && container) {
@@ -345,28 +351,107 @@ class AlertEngine {
 		await db.insert(alerts).values({
 			ruleType: type, serverId, stackId, containerName: container, severity,
 			message, messageKey, messageParamsJson: JSON.stringify(params),
-			...(transient ? { resolvedAt: new Date() } : {})
+			...(transient || quiet ? { resolvedAt: new Date() } : {})
 		});
+		if (quiet) {
+			console.log(`[alerts] In Ruhezeit unterdrückt: ${type} (Server ${serverId})`);
+			return false;
+		}
 		notifyDispatchers({ type, severity, serverId, container, message, messageKey, params });
+		return true;
 	}
 
+	/** Ruhephase des Servers — Stummschaltung auf Zeit oder tägliches Fenster. */
+	private async isQuietFor(serverId: number): Promise<boolean> {
+		const [row] = await db
+			.select({
+				mutedUntil: servers.mutedUntil,
+				quietFrom: servers.quietFrom,
+				quietMinutes: servers.quietMinutes
+			})
+			.from(servers)
+			.where(eq(servers.id, serverId))
+			.limit(1);
+		return row ? isQuiet(row) : false;
+	}
+
+	private static readonly RESOLVED_COLUMNS = {
+		ruleType: alerts.ruleType,
+		severity: alerts.severity,
+		containerName: alerts.containerName,
+		serverId: alerts.serverId
+	};
+
 	private async resolve(serverId: number, container: string, types: AlertType[]) {
+		const resolved = [];
 		for (const type of types) {
-			await db.update(alerts).set({ resolvedAt: new Date() }).where(and(
-				eq(alerts.ruleType, type),
-				eq(alerts.serverId, serverId),
-				eq(alerts.containerName, container),
-				isNull(alerts.resolvedAt)
-			));
+			resolved.push(
+				...(await db.update(alerts).set({ resolvedAt: new Date() }).where(and(
+					eq(alerts.ruleType, type),
+					eq(alerts.serverId, serverId),
+					eq(alerts.containerName, container),
+					isNull(alerts.resolvedAt)
+				)).returning(AlertEngine.RESOLVED_COLUMNS))
+			);
 		}
+		await this.announceRecovery(resolved);
 	}
 
 	private async resolveByType(serverId: number, type: AlertType) {
-		await db.update(alerts).set({ resolvedAt: new Date() }).where(and(
+		const resolved = await db.update(alerts).set({ resolvedAt: new Date() }).where(and(
 			eq(alerts.ruleType, type),
 			eq(alerts.serverId, serverId),
 			isNull(alerts.resolvedAt)
-		));
+		)).returning(AlertEngine.RESOLVED_COLUMNS);
+		await this.announceRecovery(resolved);
+	}
+
+	/**
+	 * Entwarnung. Wer über eine Störung benachrichtigt, schuldet auch die
+	 * Nachricht, dass sie vorbei ist — sonst bleibt der Nutzer mit einer
+	 * kritischen Meldung im Kopf zurück und muss selbst nachsehen.
+	 * Ausgelassen wird sie bei Info-Meldungen (da gab es keine Sorge) und
+	 * während einer Ruhephase.
+	 */
+	private async announceRecovery(
+		rows: { ruleType: AlertType; severity: Severity; containerName: string | null; serverId: number }[]
+	) {
+		const seen = new Set<string>();
+		const names = new Map<number, string>();
+		for (const row of rows) {
+			if (row.severity === 'info') continue;
+			const key: MessageKey = row.containerName
+				? 'alert.recoveredContainer'
+				: row.ruleType === 'disk_space'
+					? 'alert.recoveredDisk'
+					: 'alert.recoveredServer';
+			const dedup = `${row.serverId}:${row.containerName ?? ''}:${key}`;
+			if (seen.has(dedup)) continue; // container_exit + crash_loop → eine Entwarnung
+			seen.add(dedup);
+			if (await this.isQuietFor(row.serverId)) continue;
+			if (!names.has(row.serverId)) {
+				const [srv] = await db
+					.select({ name: servers.name })
+					.from(servers)
+					.where(eq(servers.id, row.serverId))
+					.limit(1);
+				names.set(row.serverId, srv?.name ?? `#${row.serverId}`);
+			}
+			const params: Record<string, string | number> = row.containerName
+				? { container: row.containerName }
+				: { server: names.get(row.serverId)! };
+			// Bewusst kein neuer Alert-Datensatz: Der ursprüngliche steht als
+			// erledigt im Verlauf, eine zweite Zeile wäre nur Rauschen.
+			notifyDispatchers({
+				type: row.ruleType,
+				severity: 'info',
+				serverId: row.serverId,
+				container: row.containerName ?? undefined,
+				message: translator('de')(key, params),
+				messageKey: key,
+				params
+			});
+		}
 	}
 }
 

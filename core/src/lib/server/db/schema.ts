@@ -84,7 +84,14 @@ export const servers = sqliteTable('servers', {
 	lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }),
 	createdAt: integer('created_at', { mode: 'timestamp' })
 		.notNull()
-		.$defaultFn(() => new Date())
+		.$defaultFn(() => new Date()),
+	// ── Ruhe ──
+	// Stummschaltung auf Zeit (Wartung von Hand) und ein täglich wiederkehrendes
+	// Fenster (geplanter Router- oder Server-Neustart). In beiden Fällen werden
+	// Alarme protokolliert, aber nicht zugestellt.
+	mutedUntil: integer('muted_until', { mode: 'timestamp' }),
+	quietFrom: text('quiet_from'), // "HH:MM" in der Zeitzone des Cores
+	quietMinutes: integer('quiet_minutes').notNull().default(15)
 });
 
 // Cache/Metadaten — Quelle bleibt das Dateisystem! Bei Konflikt gewinnt der Agent.

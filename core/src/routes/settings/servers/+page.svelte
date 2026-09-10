@@ -56,6 +56,80 @@
 		</form>
 		{#if form?.sshSaved === server.id}<small role="status" style="color: var(--color-ok);">{t('servers.sshSaved')}</small>{/if}
 
+		<details style="margin-top: var(--space-2);">
+			<summary>
+				{t('servers.quiet')}
+				{#if server.mutedUntil && new Date(server.mutedUntil) > new Date()}
+					· <span style="color: var(--color-warn);"
+						>{t('servers.mutedUntil', {
+							time: new Date(server.mutedUntil).toLocaleTimeString(page.data.locale ?? 'en', {
+								hour: '2-digit',
+								minute: '2-digit'
+							})
+						})}</span
+					>
+				{:else if server.quietFrom}
+					· <span style="color: var(--color-text-dim);"
+						>{t('servers.quietDaily', { from: server.quietFrom, minutes: server.quietMinutes })}</span
+					>
+				{/if}
+			</summary>
+
+			<p style="color: var(--color-text-dim);">{t('servers.quietHint')}</p>
+
+			<div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+				{#each [30, 120, 480] as minutes (minutes)}
+					<form method="POST" action="?/mute" use:enhance style="flex: 1; min-width: 5rem;">
+						<input type="hidden" name="id" value={server.id} />
+						<input type="hidden" name="minutes" value={minutes} />
+						<button style="background: transparent; color: var(--color-text); border: 1px solid var(--color-border);">
+							{minutes < 60 ? t('servers.muteMinutes', { minutes }) : t('servers.muteHours', { hours: minutes / 60 })}
+						</button>
+					</form>
+				{/each}
+				{#if server.mutedUntil && new Date(server.mutedUntil) > new Date()}
+					<form method="POST" action="?/mute" use:enhance style="flex: 1; min-width: 5rem;">
+						<input type="hidden" name="id" value={server.id} />
+						<input type="hidden" name="minutes" value="0" />
+						<button style="width: 100%;">{t('servers.unmute')}</button>
+					</form>
+				{/if}
+			</div>
+
+			<form
+				method="POST"
+				action="?/setQuiet"
+				use:enhance
+				style="display: flex; gap: var(--space-2); align-items: flex-end; margin-top: var(--space-3);"
+			>
+				<input type="hidden" name="id" value={server.id} />
+				<div style="flex: 1;">
+					<label for="quiet-{server.id}">{t('servers.quietFrom', { zone: data.timeZone })}</label>
+					<input
+						id="quiet-{server.id}"
+						name="quietFrom"
+						type="time"
+						value={server.quietFrom ?? ''}
+						style="margin-bottom: 0;"
+					/>
+				</div>
+				<div style="width: 6rem;">
+					<label for="quietmin-{server.id}">{t('servers.quietMinutes')}</label>
+					<input
+						id="quietmin-{server.id}"
+						name="quietMinutes"
+						type="number"
+						min="1"
+						max="720"
+						value={server.quietMinutes}
+						style="margin-bottom: 0;"
+					/>
+				</div>
+				<button style="width: auto;">OK</button>
+			</form>
+			{#if form?.quietSaved === server.id}<small role="status" style="color: var(--color-ok);">{t('servers.quietSaved')}</small>{/if}
+		</details>
+
 		<form
 			method="POST"
 			action="?/remove"

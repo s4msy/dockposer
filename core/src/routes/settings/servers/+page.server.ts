@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import { requireUser } from '$lib/server/guards';
 import { translator, type Translator } from '$lib/i18n';
 import { checkHealth, AgentError } from '$lib/server/agents/client';
+import { localZone, parseHhMm } from '$lib/server/alerts/quiet';
 import { decrypt, encrypt } from '$lib/server/crypto';
 
 /** ssh://user@host[:port] — fängt insbesondere den Doppelpunkt-Tippfehler ab. */
@@ -30,7 +31,10 @@ function validateSshUrl(
 export const load: PageServerLoad = async ({ locals }) => {
 	requireUser(locals);
 	const list = await db.query.servers.findMany({ orderBy: (s, { asc }) => [asc(s.name)] });
-	return { servers: list };
+	// Die Zeitzone gehört sichtbar dazu: Das tägliche Fenster wird in der Zeit des
+	// Core-Containers ausgewertet, und die ist ohne TZ-Variable UTC. Wer 06:00
+	// einträgt und Berlin meint, soll das hier sofort sehen.
+	return { servers: list, timeZone: localZone };
 };
 
 export const actions: Actions = {
@@ -73,6 +77,32 @@ export const actions: Actions = {
 		if (!sshCheck.ok) return fail(400, { error: sshCheck.error });
 		await db.update(servers).set({ sshUrl: sshCheck.value }).where(eq(servers.id, id));
 		return { sshSaved: id };
+	},
+
+	mute: async ({ locals, request }) => {
+		requireUser(locals);
+		const form = await request.formData();
+		const id = Number(form.get('id'));
+		const minutes = Number(form.get('minutes') ?? 0);
+		// minutes = 0 hebt die Stummschaltung auf
+		const until = minutes > 0 ? new Date(Date.now() + minutes * 60_000) : null;
+		await db.update(servers).set({ mutedUntil: until }).where(eq(servers.id, id));
+		return { muteSaved: id };
+	},
+
+	setQuiet: async ({ locals, request }) => {
+		requireUser(locals);
+		const t = translator(locals.locale);
+		const form = await request.formData();
+		const id = Number(form.get('id'));
+		const raw = String(form.get('quietFrom') ?? '').trim();
+		const minutes = Math.min(Math.max(Number(form.get('quietMinutes') ?? 15), 1), 720);
+		if (raw && parseHhMm(raw) === null) return fail(400, { error: t('servers.quietInvalid') });
+		await db
+			.update(servers)
+			.set({ quietFrom: raw || null, quietMinutes: minutes })
+			.where(eq(servers.id, id));
+		return { quietSaved: id };
 	},
 
 	remove: async ({ locals, request }) => {

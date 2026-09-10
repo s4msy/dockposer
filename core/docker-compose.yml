@@ -11,6 +11,9 @@ services:
       - ORIGIN=${ORIGIN}
       - SESSION_SECRET=${SESSION_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      # Zeitzone: bestimmt, wann tägliche Wartungsfenster greifen. Ohne sie UTC.
+      - TZ=${TZ:-UTC}
+      - PUSH_HEARTBEAT_DAYS=${PUSH_HEARTBEAT_DAYS:-7}
     depends_on:
       - agent
 

@@ -19,6 +19,8 @@ async function listenLoop(serverId: number) {
 	let fails = 0;
 	let backoff = RECONNECT_MIN_MS;
 	let offlineSince = 0; // Zeitpunkt des ersten Fehlversuchs dieser Downtime-Phase
+	let alerted = false; // wurde für DIESE Downtime schon alarmiert?
+	let quietLogged = false; // Unterdrückung nur einmal je Downtime protokollieren
 	const OFFLINE_AFTER_MS = 45_000; // erst nach 45s echter Nichterreichbarkeit alarmieren
 	const abort = new AbortController();
 	activeLoops.set(serverId, abort);
@@ -34,6 +36,8 @@ async function listenLoop(serverId: number) {
 			connectedAt = Date.now();
 			fails = 0;
 			offlineSince = 0;
+			alerted = false;
+			quietLogged = false;
 			backoff = RECONNECT_MIN_MS;
 			await db.update(servers).set({ status: 'online', lastSeenAt: new Date() }).where(eq(servers.id, serverId));
 			await engine.agentOnline(serverId);
@@ -68,11 +72,20 @@ async function listenLoop(serverId: number) {
 			fails++;
 			// Alarm erst, wenn die Downtime wirklich anhält — nicht beim ersten Zucken
 			if (offlineSince > 0 && Date.now() - offlineSince >= OFFLINE_AFTER_MS) {
-				const [current] = await db.select({ status: servers.status }).from(servers).where(eq(servers.id, serverId));
-				if (current && current.status !== 'offline') {
-					await db.update(servers).set({ status: 'offline' }).where(eq(servers.id, serverId));
-					await engine.agentOffline(serverId, server.name);
-					console.warn(`[alerts] Agent offline: ${server.name} (seit ${Math.round((Date.now() - offlineSince) / 1000)}s)`);
+				await db.update(servers).set({ status: 'offline' }).where(eq(servers.id, serverId));
+				// Nicht am DB-Status festmachen, ob schon alarmiert wurde: Fällt der
+				// Alarm in eine Ruhezeit, wird er unterdrückt — und ein Ausfall, der
+				// in einem Wartungsfenster beginnt und danach anhält, wäre für immer
+				// verschluckt. Deshalb bis zum tatsächlichen Alarm weiterversuchen.
+				if (!alerted) {
+					const secs = Math.round((Date.now() - offlineSince) / 1000);
+					alerted = await engine.agentOffline(serverId, server.name);
+					if (alerted) {
+						console.warn(`[alerts] Agent offline: ${server.name} (seit ${secs}s)`);
+					} else if (!quietLogged) {
+						quietLogged = true;
+						console.log(`[alerts] Agent offline: ${server.name} — Alarm unterdrückt (Ruhezeit)`);
+					}
 				}
 			}
 		}

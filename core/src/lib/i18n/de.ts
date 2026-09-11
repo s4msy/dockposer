@@ -128,6 +128,8 @@ export const de = {
 	'stack.builtAt': 'gebaut {date}',
 	'stack.runningBuild': 'im Einsatz: Build vom {date}',
 	'stack.releaseNotes': 'Release Notes ansehen',
+	'stack.noHealthchecksAll': 'Kein Dienst dieses Stacks hat einen Healthcheck. Nach einem Update lässt sich nur feststellen, dass nichts abstürzt — nicht, dass es funktioniert.',
+	'stack.noHealthchecksSome': 'Ohne Healthcheck: {services}. Nach einem Update lässt sich für diese Dienste nur feststellen, dass sie nicht abstürzen.',
 	'stack.checkPaused': 'Gestoppt — die automatische Update-Prüfung pausiert. Der Knopf oben prüft trotzdem.',
 	'stack.lastCheck': 'Letzter Check: {date}',
 	'stack.checkImpossibleAuth': 'Check nicht möglich —',

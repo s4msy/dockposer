@@ -42,6 +42,14 @@
 	const stackStopped = $derived(
 		containers.length === 0 || !containers.some((c) => c.State === 'running' || c.State === 'restarting')
 	);
+	// Dienste ohne Healthcheck. Docker meldet für sie kein Urteil, das
+	// Stabilisierungsfenster nach einem Update kann deshalb nur feststellen, dass
+	// sie nicht abgestürzt sind — ein schwächerer Nachweis als „healthy".
+	const withoutHealthcheck = $derived(
+		containers
+			.filter((c) => c.State === 'running' && !c.Health)
+			.map((c) => c.Service || c.Name)
+	);
 	let stats = $state<Record<string, { cpu: string; mem: string }>>({});
 
 	// Live-Polling: ps + stats alle 5s, solange die Seite offen ist
@@ -385,6 +393,14 @@
 	{/if}
 
 	<div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2);">
+	{#if withoutHealthcheck.length > 0 && containers.length > 0}
+		<small style="color: var(--color-text-dim); display: block; margin-bottom: var(--space-2);">
+			{withoutHealthcheck.length === containers.filter((c) => c.State === 'running').length
+				? t('stack.noHealthchecksAll')
+				: t('stack.noHealthchecksSome', { services: withoutHealthcheck.join(', ') })}
+		</small>
+	{/if}
+
 		<form method="POST" action="?/checkUpdates" use:enhance>
 			<button style="background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);" disabled={data.agentOffline}>{t('stack.checkUpdates')}</button>
 		</form>

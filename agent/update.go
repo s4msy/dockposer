@@ -231,7 +231,24 @@ func handleUpdate(w http.ResponseWriter, r *http.Request) {
 		os.Remove(filepath.Join(dir, rollbackFile))
 		emit("Alte Rollback-Pin-Datei entfernt (Update erfolgreich).")
 	}
-	emit("✓ Update erfolgreich, alle Container stabil.")
+	// Ehrlich bleiben, was geprüft wurde: Ohne Healthcheck fällt Docker kein
+	// Urteil über den Dienst — dann ist „stabil" nur die Aussage, dass nichts
+	// abgestürzt ist. Das als Erfolgsnachweis zu verkaufen, wäre zu viel.
+	checked, total := 0, 0
+	for _, row := range healthSnapshot(ctx, dir) {
+		total++
+		if row.Health != "" {
+			checked++
+		}
+	}
+	switch {
+	case total == 0 || checked == total:
+		emit("✓ Update erfolgreich, alle Container stabil.")
+	case checked == 0:
+		emit("✓ Update abgeschlossen — kein Container abgestürzt. (Keine Healthchecks definiert, mehr lässt sich nicht prüfen.)")
+	default:
+		emit(fmt.Sprintf("✓ Update abgeschlossen — %d von %d Diensten per Healthcheck bestätigt, der Rest ist lediglich nicht abgestürzt.", checked, total))
+	}
 	result("success", map[string]any{"old_digests": oldDigests, "new_digests": newDigests})
 }
 

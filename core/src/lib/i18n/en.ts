@@ -120,6 +120,7 @@ export const en: Record<MessageKey, string> = {
 	'stack.runUpdate': 'Update (auto-rollback)',
 	'stack.builtAt': 'built {date}',
 	'stack.runningBuild': 'in use: build from {date}',
+	'stack.releaseNotesShort': 'Release notes',
 	'stack.releaseNotes': 'View release notes',
 	'stack.noHealthchecksAll': 'No service in this stack has a healthcheck. After an update all that can be verified is that nothing crashes — not that it works.',
 	'stack.noHealthchecksSome': 'No healthcheck: {services}. After an update these services can only be verified as not crashing.',

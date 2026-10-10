@@ -73,10 +73,16 @@
 {#if data.resolved.length > 0}
 	<h1 style="font-size: 1.1rem;">{t('alerts.recentlyResolved')}</h1>
 	{#each data.resolved as alert (alert.id)}
-		<div class="card" style="opacity: 0.7;">
-			{alert.message}
+		{@const recovery = alert.messageKey?.startsWith('alert.recovered')}
+		<div class="card" style="opacity: {recovery ? 0.9 : 0.7};{recovery ? ' border-left: 3px solid var(--color-ok);' : ''}">
+			{#if recovery}<span style="color: var(--color-ok);" aria-hidden="true">✓ </span>{/if}{alert.message}
 			<small style="color: var(--color-text-dim); display: block;">
-				{data.serverNames[alert.serverId] ?? ''} · {fmtTime(alert.firedAt)} → {alert.resolvedAt ? fmtTime(alert.resolvedAt) : ''}
+				{data.serverNames[alert.serverId] ?? ''} ·
+				{#if recovery}
+					{fmtTime(alert.firedAt)}
+				{:else}
+					{fmtTime(alert.firedAt)} → {alert.resolvedAt ? fmtTime(alert.resolvedAt) : ''}
+				{/if}
 			</small>
 		</div>
 	{/each}

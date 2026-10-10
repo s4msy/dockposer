@@ -451,11 +451,27 @@
 									})}
 								{/if}
 							</small>
-							<small style="display: block; color: var(--color-text-dim);">
-								{run.changed.length > 0
-									? t('stack.historyChanged', { services: run.changed.join(', ') })
-									: t('stack.historyNoChange')}
-							</small>
+							{#if run.changes.length > 0}
+								<!-- Eine Zeile je geändertem Dienst, mit Version und Link zu den
+								     Release Notes. Auch bei automatischen Updates nachlesbar, die
+								     im Feed nie als „verfügbar" auftauchen. -->
+								{#each run.changes as c (c.service)}
+									<small style="display: block; color: var(--color-text-dim);">
+										<strong style="color: var(--color-text); font-weight: 600;">{c.service}</strong>
+										{#if c.from && c.to}{c.from} → {c.to}{:else if c.to}→ {c.to}{/if}
+										{#if c.created}· {t('stack.builtAt', { date: new Date(c.created).toLocaleDateString(page.data.locale ?? 'en') })}{/if}
+										{#if c.releases}
+											· <a href={c.releases} target="_blank" rel="noopener noreferrer">{t('stack.releaseNotesShort')}</a>
+										{/if}
+									</small>
+								{/each}
+							{:else}
+								<small style="display: block; color: var(--color-text-dim);">
+									{run.changed.length > 0
+										? t('stack.historyChanged', { services: run.changed.join(', ') })
+										: t('stack.historyNoChange')}
+								</small>
+							{/if}
 						</span>
 					</div>
 					{#if run.logExcerpt}

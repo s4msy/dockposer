@@ -9,6 +9,7 @@ import { decrypt } from '$lib/server/crypto';
 import { fetchCompose, fetchStackPs, putCompose, deleteStack, fetchEditableFiles, fetchFile, putFile, fetchDriftDebug, deletePin, AgentError } from '$lib/server/agents/client';
 import { checkStackUpdates } from '$lib/server/updates/checker';
 import { syncUpdateAlert } from '$lib/server/updates/notify';
+import type { ServiceChange } from '$lib/server/updates/run';
 import { redirect } from '@sveltejs/kit';
 
 async function loadServer(serverId: string) {
@@ -36,6 +37,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 					oldDigestsJson: updateRuns.oldDigestsJson,
 					newDigestsJson: updateRuns.newDigestsJson,
 					logExcerpt: updateRuns.logExcerpt,
+					changesJson: updateRuns.changesJson,
 					startedAt: updateRuns.startedAt,
 					finishedAt: updateRuns.finishedAt
 				})
@@ -54,11 +56,18 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		} catch {
 			/* alter Eintrag ohne Digest-Daten */
 		}
+		let changes: ServiceChange[] = [];
+		try {
+			changes = r.changesJson ? JSON.parse(r.changesJson) : [];
+		} catch {
+			/* defekter Eintrag → ohne Zusatzinfo anzeigen */
+		}
 		return {
 			id: r.id,
 			trigger: r.trigger,
 			result: r.result,
 			changed,
+			changes,
 			logExcerpt: r.logExcerpt,
 			startedAt: r.startedAt,
 			finishedAt: r.finishedAt

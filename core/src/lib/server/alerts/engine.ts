@@ -379,7 +379,8 @@ class AlertEngine {
 		ruleType: alerts.ruleType,
 		severity: alerts.severity,
 		containerName: alerts.containerName,
-		serverId: alerts.serverId
+		serverId: alerts.serverId,
+		stackId: alerts.stackId
 	};
 
 	private async resolve(serverId: number, container: string, types: AlertType[]) {
@@ -414,7 +415,13 @@ class AlertEngine {
 	 * während einer Ruhephase.
 	 */
 	private async announceRecovery(
-		rows: { ruleType: AlertType; severity: Severity; containerName: string | null; serverId: number }[]
+		rows: {
+			ruleType: AlertType;
+			severity: Severity;
+			containerName: string | null;
+			serverId: number;
+			stackId: number | null;
+		}[]
 	) {
 		const seen = new Set<string>();
 		const names = new Map<number, string>();
@@ -428,7 +435,7 @@ class AlertEngine {
 			const dedup = `${row.serverId}:${row.containerName ?? ''}:${key}`;
 			if (seen.has(dedup)) continue; // container_exit + crash_loop → eine Entwarnung
 			seen.add(dedup);
-			if (await this.isQuietFor(row.serverId)) continue;
+			const quiet = await this.isQuietFor(row.serverId);
 			if (!names.has(row.serverId)) {
 				const [srv] = await db
 					.select({ name: servers.name })
@@ -440,14 +447,31 @@ class AlertEngine {
 			const params: Record<string, string | number> = row.containerName
 				? { container: row.containerName }
 				: { server: names.get(row.serverId)! };
-			// Bewusst kein neuer Alert-Datensatz: Der ursprüngliche steht als
-			// erledigt im Verlauf, eine zweite Zeile wäre nur Rauschen.
+			const message = translator('de')(key, params);
+			// Eigener Eintrag im Verlauf, sofort als erledigt abgelegt. Vorher gab
+			// es die Entwarnung nur als Push — wer die Nachricht wegwischte oder sie
+			// verpasste, fand im Alert-Center nur die Störung, nie ihr Ende.
+			// Auch in Ruhezeiten protokolliert, nur dann nicht zugestellt.
+			const now = new Date();
+			await db.insert(alerts).values({
+				ruleType: row.ruleType,
+				serverId: row.serverId,
+				stackId: row.stackId,
+				containerName: row.containerName,
+				severity: 'info',
+				message,
+				messageKey: key,
+				messageParamsJson: JSON.stringify(params),
+				firedAt: now,
+				resolvedAt: now
+			});
+			if (quiet) continue;
 			notifyDispatchers({
 				type: row.ruleType,
 				severity: 'info',
 				serverId: row.serverId,
 				container: row.containerName ?? undefined,
-				message: translator('de')(key, params),
+				message,
 				messageKey: key,
 				params
 			});

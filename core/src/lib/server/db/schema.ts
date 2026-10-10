@@ -185,6 +185,10 @@ export const updateRuns = sqliteTable('update_runs', {
 	newDigestsJson: text('new_digests_json'),
 	result: text('result', { enum: updateResult }),
 	logExcerpt: text('log_excerpt'),
+	// Je geändertem Dienst: Version vorher/nachher, Bauzeit, Release-Link.
+	// Wird beim Abschluss des Laufs festgehalten — danach ist das Update
+	// eingespielt und aus dem Feed verschwunden, die Auskunft sonst weg.
+	changesJson: text('changes_json'),
 	startedAt: integer('started_at', { mode: 'timestamp' })
 		.notNull()
 		.$defaultFn(() => new Date()),

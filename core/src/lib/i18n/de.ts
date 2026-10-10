@@ -127,6 +127,7 @@ export const de = {
 	'stack.runUpdate': 'Update (Auto-Rollback)',
 	'stack.builtAt': 'gebaut {date}',
 	'stack.runningBuild': 'im Einsatz: Build vom {date}',
+	'stack.releaseNotesShort': 'Release Notes',
 	'stack.releaseNotes': 'Release Notes ansehen',
 	'stack.noHealthchecksAll': 'Kein Dienst dieses Stacks hat einen Healthcheck. Nach einem Update lässt sich nur feststellen, dass nichts abstürzt — nicht, dass es funktioniert.',
 	'stack.noHealthchecksSome': 'Ohne Healthcheck: {services}. Nach einem Update lässt sich für diese Dienste nur feststellen, dass sie nicht abstürzen.',

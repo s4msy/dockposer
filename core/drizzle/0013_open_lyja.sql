@@ -1,0 +1,1 @@
+ALTER TABLE `update_runs` ADD `changes_json` text;

@@ -10,8 +10,6 @@ Dockposer manages Compose stacks that live as ordinary files in `~/stacks` (or a
 
 ## Why another one?
 
-Tested and set aside: **Portainer** (heavy, moves compose files into its own database), **Dockge** (Node.js overhead per instance, single-host thinking), **Dockhand** (weak mobile overview), **Arcane** (destroyed deployments during stack adoption), **Komodo** (powerful but overwhelming), **Dokploy/Coolify** (PaaS philosophy, Traefik lock-in).
-
 Dockposer fills the gap: **Compose only, multi-server through tiny agents, genuinely usable on a phone, and an alerting system that pushes straight to your device.**
 
 ### What it does

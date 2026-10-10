@@ -34,7 +34,35 @@ Feature bloat is the documented cause of death for half the competition. Anythin
 
 ## Screenshots
 
-<!-- Add screenshots here: overview, stack detail, alert centre -->
+All screenshots are from a phone — that is the primary target. Detail views also work on desktop.
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="33%">
+      <a href="docs/screenshots/stack-updates.png"><img src="docs/screenshots/stack-updates.png" alt="Stack detail: update check per service, update history with automatic and manual runs, live service health with CPU and memory" width="260"></a>
+      <br><sub><b>Stack detail</b><br>Update check, history, live health</sub>
+    </td>
+    <td align="center" valign="top" width="33%">
+      <a href="docs/screenshots/compose-editor.png"><img src="docs/screenshots/compose-editor.png" alt="Compose editor with syntax highlighting, Git tracking toggle and a save button that validates before writing" width="260"></a>
+      <br><sub><b>Compose editor</b><br>Validated before writing, optional Git tracking</sub>
+    </td>
+    <td align="center" valign="top" width="33%">
+      <a href="docs/screenshots/alert-rules.png"><img src="docs/screenshots/alert-rules.png" alt="Alert rules: crash loop, unexpected exit, unhealthy, out of memory, failed update, failed pull, successful update, low disk space, agent unreachable — each switchable" width="260"></a>
+      <br><sub><b>Alert rules</b><br>Pick what reaches your phone</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <a href="docs/screenshots/settings-push.png"><img src="docs/screenshots/settings-push.png" alt="Settings: passkeys, Web Push per device with ntfy fallback, links to server, Git backend and registry settings" width="260"></a>
+      <br><sub><b>Passkeys &amp; push</b><br>Fingerprint login, Web Push per device</sub>
+    </td>
+    <td align="center" valign="top">
+      <a href="docs/screenshots/settings-themes.png"><img src="docs/screenshots/settings-themes.png" alt="Settings: TOTP two-factor authentication, language selection and eight colour themes including Catppuccin, Nord, Dracula and Gruvbox" width="260"></a>
+      <br><sub><b>Two-factor, language, themes</b><br>German &amp; English, eight themes</sub>
+    </td>
+    <td></td>
+  </tr>
+</table>
 
 ---
 

@@ -10,16 +10,23 @@
 #
 # Ohne Flags fragt das Skript interaktiv nach (funktioniert auch bei curl|sh).
 # Erneutes Ausführen aktualisiert das Binary und startet den Dienst neu;
-# die bestehende Config bleibt erhalten, außer --token wird erneut übergeben.
+# die bestehende Config (Token, Listen-Adresse, Stacks-Pfad, editierbare
+# Dateien) bleibt erhalten, sofern der Wert nicht erneut übergeben wird.
+#
+# Ohne Netzzugriff auf das Repo (Forge hinter Login/SSO): aus einem lokalen
+# Checkout bauen — braucht weder --base noch curl zum Repo:
+#   git clone ssh://git@git.example.com/OWNER/dockposer.git   # bzw. git pull
+#   sudo sh dockposer/agent/install.sh --src dockposer/agent
 set -eu
 
 BASE="${DOCKPOSER_BASE:-}"
 TOKEN="${DOCKPOSER_TOKEN:-}"
 STACKS="${DOCKPOSER_STACKS:-}"
-LISTEN="${DOCKPOSER_LISTEN:-127.0.0.1:8720}"
+LISTEN="${DOCKPOSER_LISTEN:-}"
 EDITABLE="${DOCKPOSER_EDITABLE_FILES:-}"
 RUN_USER="${DOCKPOSER_USER:-}"
 FROM_SOURCE=0
+SRC_DIR=""
 BIN_PATH="/usr/local/bin/dockposer-agent"
 ENV_FILE="/etc/dockposer-agent.env"
 UNIT_FILE="/etc/systemd/system/dockposer-agent.service"
@@ -27,11 +34,14 @@ UNIT_FILE="/etc/systemd/system/dockposer-agent.service"
 say()  { printf '%s\n' "$*"; }
 warn() { printf 'WARNUNG: %s\n' "$*" >&2; }
 die()  { printf 'FEHLER: %s\n' "$*" >&2; exit 1; }
+# Login-/SSO-Seiten statt Dateien erkennen (kommen mit Status 200, curl -f hilft nicht)
+is_html() { head -c 256 "$1" | grep -qi '<!doctype html\|<html'; }
 
 # ── Argumente ──
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--from-source) FROM_SOURCE=1; shift ;;
+		--src)    SRC_DIR="$2"; FROM_SOURCE=1; shift 2 ;;
 		--base)   BASE="$2"; shift 2 ;;
 		--token)  TOKEN="$2"; shift 2 ;;
 		--stacks) STACKS="$2"; shift 2 ;;
@@ -44,7 +54,7 @@ done
 
 # ── Vorbedingungen ──
 [ "$(id -u)" = "0" ] || die "Bitte als root ausführen (sudo)."
-command -v curl >/dev/null || die "curl wird benötigt."
+[ -n "$SRC_DIR" ] || command -v curl >/dev/null || die "curl wird benötigt."
 command -v docker >/dev/null || die "Docker ist nicht installiert."
 docker compose version >/dev/null 2>&1 || die "Docker-Compose-Plugin fehlt (docker compose version schlägt fehl)."
 arch="$(uname -m)"
@@ -59,9 +69,15 @@ ask() {
 	[ -n "$answer" ] && printf '%s' "$answer" || printf '%s' "$default"
 }
 
-[ -n "$BASE" ] || BASE="$(ask 'Raw-URL-Basis des Repos (…/raw/branch/main)')"
-[ -n "$BASE" ] || die "Ohne --base geht es nicht."
-BASE="${BASE%/}"
+if [ -n "$SRC_DIR" ]; then
+	SRC_DIR="${SRC_DIR%/}"
+	[ -f "$SRC_DIR/go.mod" ] && [ -f "$SRC_DIR/main.go" ] \
+		|| die "$SRC_DIR ist kein Agent-Quellordner (go.mod/main.go fehlen)."
+else
+	[ -n "$BASE" ] || BASE="$(ask 'Raw-URL-Basis des Repos (…/raw/branch/main)')"
+	[ -n "$BASE" ] || die "Ohne --base (oder --src) geht es nicht."
+	BASE="${BASE%/}"
+fi
 
 existing_token=""
 if [ -f "$ENV_FILE" ]; then
@@ -69,7 +85,18 @@ if [ -f "$ENV_FILE" ]; then
 	if [ -z "$EDITABLE" ]; then
 		EDITABLE="$(grep '^DOCKPOSER_EDITABLE_FILES=' "$ENV_FILE" | cut -d= -f2- || true)"
 	fi
+	# Listen-Adresse und Stacks-Pfad übernehmen. Früher fiel LISTEN bei jedem
+	# Update ohne --listen auf 127.0.0.1 zurück — der Agent lief danach, war
+	# vom Core aus aber nicht mehr erreichbar.
+	if [ -z "$LISTEN" ]; then
+		LISTEN="$(grep '^DOCKPOSER_LISTEN=' "$ENV_FILE" | cut -d= -f2- || true)"
+		[ -n "$LISTEN" ] && say "Listen-Adresse aus $ENV_FILE übernommen: $LISTEN"
+	fi
+	if [ -z "$STACKS" ]; then
+		STACKS="$(grep '^DOCKPOSER_STACKS=' "$ENV_FILE" | cut -d= -f2- || true)"
+	fi
 fi
+[ -n "$LISTEN" ] || LISTEN="127.0.0.1:8720"
 [ -n "$EDITABLE" ] || EDITABLE=".env" 
 if [ -z "$TOKEN" ]; then
 	if [ -n "$existing_token" ]; then
@@ -117,7 +144,20 @@ if [ "$FROM_SOURCE" = "1" ]; then
 	# Welche Dateien gebraucht werden, steht im Repo (agent/sources.txt) — eine
 	# hier fest verdrahtete Liste veraltet still, sobald eine Datei dazukommt,
 	# und der Build scheitert dann auf jedem Server statt beim Entwickeln.
-	if curl -fsSL "$BASE/agent/sources.txt" -o "$src_dir/sources.txt" 2>/dev/null; then
+	if [ -n "$SRC_DIR" ]; then
+		say "Quelle: lokaler Ordner $SRC_DIR"
+		[ -f "$SRC_DIR/sources.txt" ] || die "$SRC_DIR/sources.txt fehlt."
+		for f in $(grep -v '^[[:space:]]*$' "$SRC_DIR/sources.txt" | tr -d '\r'); do
+			case "$f" in
+				*/*|..*) die "Ungültiger Eintrag in sources.txt: $f" ;;
+			esac
+			cp "$SRC_DIR/$f" "$src_dir/$f" || die "Datei fehlt: $SRC_DIR/$f"
+		done
+		files=""
+	elif curl -fsSL "$BASE/agent/sources.txt" -o "$src_dir/sources.txt" 2>/dev/null; then
+		# Eine Login- oder SSO-Seite kommt mit Status 200 — hier zuerst prüfen,
+		# sonst würde ihr HTML als Dateiliste gelesen.
+		is_html "$src_dir/sources.txt" && die "$BASE liefert eine HTML-Seite statt Dateien (Login/SSO?) — Repo nicht anonym lesbar. Alternative: --src mit lokalem Checkout."
 		files="$(grep -v '^[[:space:]]*$' "$src_dir/sources.txt" | tr -d '\r')"
 		rm -f "$src_dir/sources.txt"
 	else
@@ -129,12 +169,14 @@ if [ "$FROM_SOURCE" = "1" ]; then
 			*/*|..*) die "Ungültiger Eintrag in sources.txt: $f" ;;
 		esac
 		curl -fsSL "$BASE/agent/$f" -o "$src_dir/$f" || die "Download fehlgeschlagen: $BASE/agent/$f"
+		is_html "$src_dir/$f" && die "$BASE/agent/$f liefert eine HTML-Seite (Login/SSO?) — Repo nicht anonym lesbar. Alternative: --src mit lokalem Checkout."
 	done
 	( cd "$src_dir" && CGO_ENABLED=0 go build -ldflags="-s -w" -o "$tmp_bin" . ) || die "Build fehlgeschlagen."
 	rm -rf "$src_dir"
 else
 	say "Lade Agent-Binary …"
 	curl -fsSL "$BASE/agent/dockposer-agent-linux-amd64" -o "$tmp_bin" || die "Download fehlgeschlagen: $BASE/agent/dockposer-agent-linux-amd64"
+	is_html "$tmp_bin" && die "$BASE liefert eine HTML-Seite statt des Binaries (Login/SSO?). Alternative: --src mit lokalem Checkout."
 fi
 install -m 0755 "$tmp_bin" "$BIN_PATH"
 rm -f "$tmp_bin"
@@ -158,14 +200,18 @@ cat > "$UNIT_FILE" << UNITEOF
 [Unit]
 Description=Dockposer Agent
 After=docker.service
-Requires=docker.service
+# Wants statt Requires: Mit Requires stoppt systemd den Agent bei jedem
+# Docker-Neustart (Paket-Update) mit — ein sauberer Stopp, kein Fehler, also
+# greift auch kein Restart. Der Agent kommt mit fehlendem Docker selbst
+# zurecht und meldet das dem Core.
+Wants=docker.service
 
 [Service]
 Type=simple
 User=$RUN_USER
 EnvironmentFile=$ENV_FILE
 ExecStart=$BIN_PATH
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 # Härtung

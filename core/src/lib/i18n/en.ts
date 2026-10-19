@@ -134,6 +134,7 @@ export const en: Record<MessageKey, string> = {
 	'stack.policyManual': 'manual',
 	'stack.policyAuto': 'automatic',
 	'stack.policySaved': 'Policy saved.',
+	'stack.livePaused': 'Live values paused (10 min without activity) — tap to resume',
 	'stack.services': 'Services',
 	'stack.logs': 'Logs',
 	'stack.stopLogs': 'Stop',

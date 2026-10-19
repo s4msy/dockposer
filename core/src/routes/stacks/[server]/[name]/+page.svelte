@@ -52,29 +52,90 @@
 	);
 	let stats = $state<Record<string, { cpu: string; mem: string }>>({});
 
-	// Live-Polling: ps + stats alle 5s, solange die Seite offen ist
+	// Live-Polling: ps + stats alle 5s — aber nur, solange jemand hinsieht.
+	// Jeder Tick kostet auf dem Zielserver ein `compose ps` und ein
+	// `docker stats` über ALLE Container. Ein vergessener Tab (anderer Rechner,
+	// Hintergrund, Bildschirmsperre ohne Sperre des Browsers) erzeugte so rund
+	// 17.000 Anfragen am Tag, ohne dass irgendwer die Zahlen las.
+	const POLL_MS = 5_000;
+	const MAX_BACKOFF_MS = 60_000;
+	const IDLE_MS = 10 * 60_000; // ohne Bedienung: Live-Anzeige anhalten
+	let livePaused = $state(false);
+	// Halter statt loser Variable: Die echte Funktion entsteht erst im Effect,
+	// der Knopf muss immer die aktuelle aufrufen.
+	const live = { resume: () => {} };
+
 	$effect(() => {
 		containers = data.containers;
 		if (data.agentOffline) return;
+
 		let stopped = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		let delay = POLL_MS;
+		let lastActivity = Date.now();
+
+		const schedule = (ms: number) => {
+			clearTimeout(timer);
+			if (!stopped) timer = setTimeout(tick, ms);
+		};
+
+		// setTimeout-Kette statt setInterval: Ein langsamer Agent kann sonst
+		// mehrere Anfragen gleichzeitig offen haben, die sich gegenseitig stauen.
 		const tick = async () => {
+			if (stopped || document.hidden) return; // Sichtbarwerden startet neu
+			if (Date.now() - lastActivity > IDLE_MS) {
+				livePaused = true;
+				return;
+			}
 			try {
 				const res = await fetch(`/api/agent/${data.server.id}/${encodeURIComponent(data.name)}/status`);
-				if (!res.ok || stopped) return;
+				if (stopped) return;
+				if (!res.ok) throw new Error(String(res.status));
 				const body = await res.json();
 				containers = body.containers;
 				const map: Record<string, { cpu: string; mem: string }> = {};
 				for (const st of body.stats) map[st.Name] = { cpu: st.CPUPerc, mem: st.MemUsage };
 				stats = map;
+				delay = POLL_MS;
 			} catch {
-				/* nächster Tick versucht es erneut */
+				// Agent weg oder überlastet: nicht im Fünf-Sekunden-Takt nachhaken
+				delay = Math.min(delay * 2, MAX_BACKOFF_MS);
+			}
+			schedule(delay);
+		};
+
+		live.resume = () => {
+			lastActivity = Date.now();
+			if (livePaused) {
+				livePaused = false;
+				delay = POLL_MS;
+				schedule(0);
 			}
 		};
+
+		const onVisibility = () => {
+			if (document.hidden) {
+				clearTimeout(timer);
+			} else {
+				// Zurück im Tab gilt als Bedienung — sofort frische Werte
+				live.resume();
+				if (!livePaused) schedule(0);
+			}
+		};
+		const onActivity = () => {
+			lastActivity = Date.now();
+		};
+
+		document.addEventListener('visibilitychange', onVisibility);
+		const activityEvents = ['pointerdown', 'keydown', 'scroll', 'focus'] as const;
+		for (const ev of activityEvents) window.addEventListener(ev, onActivity, { passive: true });
+
 		tick();
-		const iv = setInterval(tick, 5000);
 		return () => {
 			stopped = true;
-			clearInterval(iv);
+			clearTimeout(timer);
+			document.removeEventListener('visibilitychange', onVisibility);
+			for (const ev of activityEvents) window.removeEventListener(ev, onActivity);
 		};
 	});
 
@@ -489,6 +550,14 @@
 {#if containers.length > 0}
 	<div class="card">
 		<strong>{t('stack.services')}</strong>
+		{#if livePaused}
+			<button
+				onclick={() => live.resume()}
+				style="display: block; width: 100%; margin-top: var(--space-2); background: transparent; color: var(--color-text-dim); border: 1px dashed var(--color-border);"
+			>
+				{t('stack.livePaused')}
+			</button>
+		{/if}
 		<ul style="list-style: none; padding: 0; margin: var(--space-2) 0 0;">
 			{#each containers as c (c.Name)}
 				<li style="padding: var(--space-2) 0; border-top: 1px solid var(--color-border); display: flex; align-items: center; gap: var(--space-2);">

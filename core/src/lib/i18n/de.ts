@@ -141,6 +141,7 @@ export const de = {
 	'stack.policyManual': 'manuell',
 	'stack.policyAuto': 'automatisch',
 	'stack.policySaved': 'Policy gespeichert.',
+	'stack.livePaused': 'Live-Werte pausiert (10 min ohne Bedienung) — tippen zum Fortsetzen',
 	'stack.services': 'Services',
 	'stack.logs': 'Logs',
 	'stack.stopLogs': 'Stopp',

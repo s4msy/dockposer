@@ -156,6 +156,20 @@ Das Repo muss in Forgejo **bereits existieren** — Dockposer legt keine Remote-
 
 Ist der Stacks-Ordner schon ein Repo, lässt Dockposer es unangetastet: Die Einrichtung erkennt es, und eine vorhandene `.gitignore` wird **nicht** überschrieben (es sei denn, man setzt das Häkchen explizit). Prüfen, ob die Tiefenregel enthalten ist — andernfalls die Zeile `/*/*/` ergänzen, sonst landen Volumes im Repo.
 
+### Zweites Repo für Pods
+
+Mit `--pods` gibt es pro Server ein **eigenes** Repo im Quadlet-Pfad (`~/.config/containers/systemd`), getrennt vom Stacks-Repo — beide lassen sich unabhängig einrichten und an verschiedene Remotes pushen. Einrichten ebenfalls unter *Einstellungen → Git-Backend* (Eintrag „Pods"), aktivieren pro Pod auf der Pod-Seite. Die `.gitignore` folgt derselben Tiefenregel und hält `*.env` draußen. Das Remote des Pod-Repos speichert Dockposer nicht in seiner Datenbank; es steht nur in `.git/config` auf dem Server.
+
+## Pods bearbeiten
+
+Quadlet-Dateien (`.pod .container .network .volume .image .build`, dazu `.env`) lassen sich auf der Pod-Seite bearbeiten, anlegen und löschen; neue Pods über „+ Pod" in der Übersicht. Vor jedem Schreiben läuft Podmans eigener Quadlet-Generator im Dry-Run über **alle** Pods des Servers:
+
+- Fehler in der bearbeiteten Datei blockieren das Speichern; Fehler, die schon vorher da waren (etwa per SSH eingebaut), werden nur gemeldet, damit man sie Schritt für Schritt reparieren kann.
+- Hinweise des Generators (z. B. Image ohne Registry) kommen als einklappbare Liste zurück.
+- Dateinamen und Dienstnamen müssen über alle Pods eindeutig sein — Quadlet liest jeden Namen nur einmal.
+
+Nach dem Schreiben lädt der Agent systemd neu (`daemon-reload`). Gestartet wird nichts automatisch; läuft der Pod, bietet die Seite „restart" an. Pod löschen geht nur gestoppt; benannte Volumes bleiben erhalten.
+
 ---
 
 # Private Registries

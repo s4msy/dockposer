@@ -91,8 +91,27 @@ export function highlightEnv(text: string): string {
 		.join('\n');
 }
 
+/** Quadlet-/systemd-Dateien: [Abschnitt], Key=Wert, Kommentare mit # oder ;. */
+export function highlightQuadlet(text: string): string {
+	return text
+		.split('\n')
+		.map((raw) => {
+			const line = escapeHtml(raw);
+			const comment = line.match(/^(\s*)([#;].*)$/);
+			if (comment) return comment[1] + span('comment', comment[2]);
+			const section = line.match(/^(\s*)(\[[^\]]*\])(\s*)$/);
+			if (section) return section[1] + span('literal', section[2]) + section[3];
+			const pair = line.match(/^(\s*)([A-Za-z][\w-]*)(\s*=)(.*)$/);
+			if (!pair) return line;
+			const [, indent, key, eq, value] = pair;
+			return indent + span('key', key) + span('punct', eq) + highlightVars(value);
+		})
+		.join('\n');
+}
+
 export function highlightFor(fileName: string, text: string): string {
 	if (/\.ya?ml$/i.test(fileName)) return highlightYaml(text);
+	if (/\.(container|pod|network|volume|image|build|kube)$/i.test(fileName)) return highlightQuadlet(text);
 	if (fileName === '.env' || /\.env$/i.test(fileName)) return highlightEnv(text);
 	return escapeHtml(text);
 }

@@ -31,7 +31,7 @@ import (
 	"time"
 )
 
-const version = "0.5.0"
+const version = "0.6.0"
 
 var (
 	token      string
@@ -85,8 +85,8 @@ func main() {
 	mux.HandleFunc("GET /v1/stacks/{name}/file", dockerOnly(handleFileGet))
 	mux.HandleFunc("PUT /v1/stacks/{name}/file", dockerOnly(handleFilePut))
 	mux.HandleFunc("DELETE /v1/stacks/{name}", dockerOnly(handleStackDelete))
-	mux.HandleFunc("GET /v1/git/status", dockerOnly(handleGitStatus))
-	mux.HandleFunc("POST /v1/git/init", dockerOnly(handleGitInit))
+	mux.HandleFunc("GET /v1/git/status", handleGitStatus) // ?scope=pods prüft selbst
+	mux.HandleFunc("POST /v1/git/init", handleGitInit)
 	mux.HandleFunc("POST /v1/stacks/{name}/up", dockerOnly(action("up", "-d")))
 	mux.HandleFunc("POST /v1/stacks/{name}/down", dockerOnly(action("down")))
 	mux.HandleFunc("POST /v1/stacks/{name}/pull", dockerOnly(action("pull")))
@@ -101,6 +101,11 @@ func main() {
 	mux.HandleFunc("POST /v1/pods/{name}/stop", podAction("stop"))
 	mux.HandleFunc("POST /v1/pods/{name}/restart", podAction("restart"))
 	mux.HandleFunc("GET /v1/pods/containers/{id}/logs", handlePodLogs)
+	mux.HandleFunc("POST /v1/pods", handlePodCreate)
+	mux.HandleFunc("DELETE /v1/pods/{name}", handlePodDelete)
+	mux.HandleFunc("GET /v1/pods/{name}/files", handlePodFiles)
+	mux.HandleFunc("PUT /v1/pods/{name}/files/{file}", handlePodFilePut)
+	mux.HandleFunc("DELETE /v1/pods/{name}/files/{file}", handlePodFileDelete)
 
 	initEditableFiles()
 	pods := "aus"

@@ -5,7 +5,7 @@
 	import { translator } from '#lib/i18n/index.ts';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	const t = $derived(translator(page.data.locale ?? 'en'));
-	let expanded = $state<number | null>(null);
+	let expanded = $state<string | null>(null);
 </script>
 
 <h1>{t('git.title')}</h1>
@@ -19,10 +19,11 @@
 
 {#if form?.error}<div class="alert-error" role="alert">{form.error}</div>{/if}
 
-{#each data.servers as server (server.id)}
+{#each data.repos as server (server.key)}
 	<div class="card">
 		<div class="server-head">
 			<span class="server-name">{server.name}</span>
+			<small class="scope-badge">{server.scope === 'pods' ? t('git.scopePods') : t('git.scopeStacks')}</small>
 			{#if server.status?.is_repo}
 				<span class="dot running" aria-label="Repo vorhanden"></span>
 			{:else if server.status?.git_installed === false}
@@ -41,7 +42,7 @@
 			</p>
 		{:else if server.status?.is_repo}
 			<p style="margin: 0 0 var(--space-2);">
-				✓ {t('git.repoActive', { path: server.stacksPath })}
+				✓ {t('git.repoActive', { path: server.path })}
 				<small style="display: block; color: var(--color-text-dim);">
 					{t('git.branch', { branch: server.status.branch ?? '?' })}
 					{#if server.status.remote}· {t('git.pushTarget', { remote: server.storedRemote || server.status.remote })}{:else}· {t('git.noPushTarget')}{/if}
@@ -50,15 +51,15 @@
 				</small>
 			</p>
 			{#if server.tracked.length > 0}
-				<p style="margin: 0 0 var(--space-2);"><small style="color: var(--color-text-dim);">{t('git.trackingFor', { stacks: server.tracked.join(', ') })}</small></p>
+				<p style="margin: 0 0 var(--space-2);"><small style="color: var(--color-text-dim);">{t(server.scope === 'pods' ? 'git.trackingForPods' : 'git.trackingFor', { stacks: server.tracked.join(', ') })}</small></p>
 			{:else}
-				<p style="margin: 0 0 var(--space-2);"><small style="color: var(--color-warn);">{t('git.noTracking')}</small></p>
+				<p style="margin: 0 0 var(--space-2);"><small style="color: var(--color-warn);">{t(server.scope === 'pods' ? 'git.noTrackingPods' : 'git.noTracking')}</small></p>
 			{/if}
 		{:else}
-			<p style="color: var(--color-text-dim);">{t('git.noRepo', { path: server.stacksPath })}</p>
+			<p style="color: var(--color-text-dim);">{t('git.noRepo', { path: server.path })}</p>
 		{/if}
 
-		{#if form?.setupDone === server.id}
+		{#if form?.setupDone === server.key}
 			<p role="status" style="color: var(--color-ok);">
 				{t('git.setUpDone')}
 				{#if form.repo_created}{t('git.repoCreated')}{/if}
@@ -67,13 +68,13 @@
 		{/if}
 
 		{#if server.status?.git_installed !== false && !server.error}
-			{#if expanded === server.id}
+			{#if expanded === server.key}
 				<form method="POST" action="?/setup" use:enhance={() => async ({ update }) => update({ reset: false })}>
-					<label for="remote-{server.id}">{t('git.remoteLabel')}</label>
+					<label for="remote-{server.key}">{t('git.remoteLabel')}</label>
 					<input
-						id="remote-{server.id}"
+						id="remote-{server.key}"
 						name="remote"
-						placeholder="git@git.example.com:user/stacks-{server.name}.git"
+						placeholder="git@git.example.com:user/{server.scope}-{server.name}.git"
 						autocomplete="off"
 					/>
 					<small style="color: var(--color-text-dim); display: block; margin-bottom: var(--space-3);">
@@ -82,7 +83,7 @@
 
 					<label style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2);">
 						<input type="checkbox" name="writeGitignore" checked style="width: auto; margin: 0;" />
-						{t('git.writeGitignore')}
+						{t(server.scope === 'pods' ? 'git.writeGitignorePods' : 'git.writeGitignore')}
 					</label>
 					{#if server.status?.gitignore}
 						<label style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2);">
@@ -96,6 +97,7 @@
 					{/if}
 
 					<input type="hidden" name="id" value={server.id} />
+					<input type="hidden" name="scope" value={server.scope} />
 					<button>{server.status?.is_repo ? t('git.apply') : t('git.setUpRepo')}</button>
 				</form>
 				{#if server.hasStoredRemote}
@@ -107,10 +109,20 @@
 				<button onclick={() => (expanded = null)} style="background: transparent; color: var(--color-text-dim); border: none; margin-top: var(--space-2);">{t('common.close')}</button>
 			{:else}
 				<button
-					onclick={() => (expanded = server.id)}
+					onclick={() => (expanded = server.key)}
 					style="background: transparent; color: var(--color-primary); border: 1px solid var(--color-primary);"
 				>{server.status?.is_repo ? t('git.settings') : t('git.setUpRepo')}</button>
 			{/if}
 		{/if}
 	</div>
 {/each}
+
+<style>
+	.scope-badge {
+		font-size: 0.75rem;
+		padding: 0 var(--space-1);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		color: var(--color-text-dim);
+	}
+</style>

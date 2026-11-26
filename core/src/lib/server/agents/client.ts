@@ -166,20 +166,27 @@ export interface AgentGitStatus {
 	last_commit?: string;
 	dirty_files?: number;
 	gitignore?: string;
+	/** ab Agent 0.6.0 */
+	path?: string;
 }
 
-export const fetchGitStatus = (baseUrl: string, token: string) =>
-	agentFetch<AgentGitStatus>(baseUrl, token, '/v1/git/status', {}, 15_000);
+/** 'stacks' = Repo am Stacks-Pfad, 'pods' = eigenes Repo im Quadlet-Pfad */
+export type GitScope = 'stacks' | 'pods';
+const scopeQuery = (scope: GitScope) => (scope === 'pods' ? '?scope=pods' : '');
+
+export const fetchGitStatus = (baseUrl: string, token: string, scope: GitScope = 'stacks') =>
+	agentFetch<AgentGitStatus>(baseUrl, token, '/v1/git/status' + scopeQuery(scope), {}, 15_000);
 
 export const initGit = (
 	baseUrl: string,
 	token: string,
-	body: { remote?: string; write_gitignore?: boolean; overwrite_gitignore?: boolean }
+	body: { remote?: string; write_gitignore?: boolean; overwrite_gitignore?: boolean },
+	scope: GitScope = 'stacks'
 ) =>
 	agentFetch<{ repo_created: boolean; gitignore_written: boolean; gitignore_existed: boolean }>(
 		baseUrl,
 		token,
-		'/v1/git/init',
+		'/v1/git/init' + scopeQuery(scope),
 		{ method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } },
 		20_000
 	);
@@ -283,3 +290,84 @@ export const fetchPods = (baseUrl: string, token: string) =>
 
 export const fetchPodPs = (baseUrl: string, token: string, pod: string) =>
 	agentFetch<AgentContainer[]>(baseUrl, token, `/v1/pods/${encodeURIComponent(pod)}/ps`);
+
+// ── Pods bearbeiten (Phase 2) ──────────────────────────────────────────────
+
+export interface PodFile {
+	name: string;
+	content: string;
+	/** .env — nie ins Git, Inhalt nur auf Wunsch anzeigen */
+	secret: boolean;
+}
+
+export const fetchPodFiles = (baseUrl: string, token: string, pod: string) =>
+	agentFetch<{ files: PodFile[]; path: string; hash: string }>(
+		baseUrl,
+		token,
+		`/v1/pods/${encodeURIComponent(pod)}/files`
+	);
+
+/** Antwort jeder Pod-Änderung. Ungültige Dateien kommen als AgentError (422). */
+export interface PodChangeResult {
+	hash?: string;
+	warnings?: string[] | null;
+	restart_needed?: boolean;
+	reload_error?: string;
+	committed?: boolean;
+	git_error?: string;
+}
+
+const gitQuery = (git?: { message: string }) =>
+	git ? `?git=1&message=${encodeURIComponent(git.message)}` : '';
+
+// Der Generator-Lauf prüft alle Pods des Servers — großzügiger Timeout.
+const POD_EDIT_TIMEOUT = 45_000;
+
+export const putPodFile = (
+	baseUrl: string,
+	token: string,
+	pod: string,
+	file: string,
+	content: string,
+	git?: { message: string }
+) =>
+	agentFetch<PodChangeResult>(
+		baseUrl,
+		token,
+		`/v1/pods/${encodeURIComponent(pod)}/files/${encodeURIComponent(file)}${gitQuery(git)}`,
+		{ method: 'PUT', body: content },
+		POD_EDIT_TIMEOUT
+	);
+
+export const deletePodFile = (baseUrl: string, token: string, pod: string, file: string, git?: { message: string }) =>
+	agentFetch<PodChangeResult>(
+		baseUrl,
+		token,
+		`/v1/pods/${encodeURIComponent(pod)}/files/${encodeURIComponent(file)}${gitQuery(git)}`,
+		{ method: 'DELETE' },
+		POD_EDIT_TIMEOUT
+	);
+
+export const createPod = (
+	baseUrl: string,
+	token: string,
+	name: string,
+	files: Record<string, string>,
+	git?: { message: string }
+) =>
+	agentFetch<PodChangeResult & { created: boolean; name: string }>(
+		baseUrl,
+		token,
+		`/v1/pods${gitQuery(git)}`,
+		{ method: 'POST', body: JSON.stringify({ name, files }), headers: { 'Content-Type': 'application/json' } },
+		POD_EDIT_TIMEOUT
+	);
+
+export const deletePod = (baseUrl: string, token: string, pod: string, git?: { message: string }) =>
+	agentFetch<PodChangeResult & { deleted: boolean }>(
+		baseUrl,
+		token,
+		`/v1/pods/${encodeURIComponent(pod)}${gitQuery(git)}`,
+		{ method: 'DELETE' },
+		POD_EDIT_TIMEOUT
+	);

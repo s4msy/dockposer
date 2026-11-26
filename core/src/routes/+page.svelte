@@ -37,9 +37,14 @@
 			<span class="server-name">{server.name}</span>
 			<span class="dot {server.status === 'online' ? 'running' : 'stopped'}" aria-label={server.status}></span>
 			{#if server.podsEnabled}<small class="runtime" title={t('overview.podmanTitle')}>Podman {server.podmanVersion}</small>{/if}
-			{#if server.dockerEnabled}
-				<a href="/servers/{server.id}/new-stack" style="text-decoration: none; margin-left: auto;">{t('overview.newStack')}</a>
-			{/if}
+			<span style="margin-left: auto; display: flex; gap: var(--space-3);">
+				{#if server.dockerEnabled}
+					<a href="/servers/{server.id}/new-stack" style="text-decoration: none;">{t('overview.newStack')}</a>
+				{/if}
+				{#if server.podsEnabled}
+					<a href="/servers/{server.id}/new-pod" style="text-decoration: none;">{t('overview.newPod')}</a>
+				{/if}
+			</span>
 		</div>
 		{#if server.podsProblem}
 			<small style="display: block; color: var(--color-warn);">{t('overview.podsProblem', { problem: server.podsProblem })}</small>

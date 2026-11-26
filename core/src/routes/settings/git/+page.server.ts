@@ -6,45 +6,57 @@ import { eq } from 'drizzle-orm';
 import { requireUser } from '#lib/server/guards.ts';
 import { translator } from '#lib/i18n/index.ts';
 import { decrypt, encrypt } from '#lib/server/crypto.ts';
-import { fetchGitStatus, initGit, AgentError, type AgentGitStatus } from '#lib/server/agents/client.ts';
+import { fetchGitStatus, initGit, AgentError, type AgentGitStatus, type GitScope } from '#lib/server/agents/client.ts';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	requireUser(locals);
 	const t = translator(locals.locale);
 	const list = await db.query.servers.findMany({ orderBy: (s, { asc }) => [asc(s.name)] });
-	const trackedStacks = await db
-		.select({ serverId: stacks.serverId, name: stacks.name, gitTracking: stacks.gitTracking })
-		.from(stacks)
-		.where(eq(stacks.kind, 'stack')); // Git für Pods folgt in Phase 2 (eigenes Repo)
+	const tracked = await db
+		.select({ serverId: stacks.serverId, name: stacks.name, kind: stacks.kind, gitTracking: stacks.gitTracking })
+		.from(stacks);
 
-	const rows = await Promise.all(
-		list.map(async (server) => {
+	// Ein Eintrag pro Repo: Stacks-Repo (wenn Docker aktiv) und Pod-Repo im
+	// Quadlet-Pfad (wenn Pods aktiv). Beide sind unabhängig voneinander.
+	const jobs = list.flatMap((server) => {
+		const scopes: GitScope[] = [];
+		if (server.dockerEnabled) scopes.push('stacks');
+		if (server.podsEnabled) scopes.push('pods');
+		return scopes.map(async (scope) => {
 			let status: AgentGitStatus | null = null;
 			let error: string | null = null;
 			try {
-				status = await fetchGitStatus(server.baseUrl, decrypt(server.agentTokenEnc));
+				status = await fetchGitStatus(server.baseUrl, decrypt(server.agentTokenEnc), scope);
+				if (status.remote) status.remote = maskRemote(status.remote);
 			} catch (e) {
 				if (e instanceof AgentError && e.status === 404) {
-					// Route unbekannt = Agent kennt das Git-Backend noch nicht
+					// Route unbekannt = Agent kennt das Git-Backend (bzw. Pod-Repos) noch nicht
 					error = t('git.agentOutdated');
 				} else {
 					error = e instanceof AgentError ? e.message : t('git.agentUnreachable');
 				}
 			}
+			const kind = scope === 'pods' ? 'pod' : 'stack';
 			return {
+				key: `${server.id}:${scope}`,
 				id: server.id,
+				scope,
 				name: server.name,
-				stacksPath: server.stacksPath,
-				// Remote wird nur maskiert ausgeliefert — kann Zugangsdaten enthalten
-				storedRemote: server.gitRemoteEnc ? maskRemote(decrypt(server.gitRemoteEnc)) : '',
-				hasStoredRemote: !!server.gitRemoteEnc,
+				path: scope === 'pods' ? (status?.path ?? '') : server.stacksPath,
+				// Remote wird nur maskiert ausgeliefert — kann Zugangsdaten enthalten.
+				// Gespeichert wird es nur fürs Stacks-Repo (Altbestand); beim Pod-Repo
+				// liegt es allein im Repo selbst.
+				storedRemote: scope === 'stacks' && server.gitRemoteEnc ? maskRemote(decrypt(server.gitRemoteEnc)) : '',
+				hasStoredRemote: scope === 'stacks' && !!server.gitRemoteEnc,
 				status,
 				error,
-				tracked: trackedStacks.filter((s) => s.serverId === server.id && s.gitTracking).map((s) => s.name)
+				tracked: tracked
+					.filter((s) => s.serverId === server.id && s.kind === kind && s.gitTracking)
+					.map((s) => s.name)
 			};
-		})
-	);
-	return { servers: rows };
+		});
+	});
+	return { repos: await Promise.all(jobs) };
 };
 
 /** Zeigt das Remote ohne eingebettete Zugangsdaten an. */
@@ -61,13 +73,14 @@ export const actions: Actions = {
 		const remoteRaw = String(form.get('remote') ?? '').trim();
 		const writeGitignore = form.get('writeGitignore') === 'on';
 		const overwrite = form.get('overwriteGitignore') === 'on';
+		const scope: GitScope = form.get('scope') === 'pods' ? 'pods' : 'stacks';
 
 		const [server] = await db.select().from(servers).where(eq(servers.id, id));
 		if (!server) return fail(404, { error: t('stack.serverNotFound') });
 
 		// Leeres Feld = bestehendes Remote beibehalten
 		let remote = remoteRaw;
-		if (!remote && server.gitRemoteEnc) remote = decrypt(server.gitRemoteEnc);
+		if (!remote && scope === 'stacks' && server.gitRemoteEnc) remote = decrypt(server.gitRemoteEnc);
 		if (remote && !/^(https?:\/\/|git@|ssh:\/\/)/.test(remote)) {
 			return fail(400, { error: t('git.remoteInvalid') });
 		}
@@ -77,11 +90,11 @@ export const actions: Actions = {
 				remote: remote || undefined,
 				write_gitignore: writeGitignore,
 				overwrite_gitignore: overwrite
-			});
-			if (remoteRaw) {
+			}, scope);
+			if (remoteRaw && scope === 'stacks') {
 				await db.update(servers).set({ gitRemoteEnc: encrypt(remoteRaw) }).where(eq(servers.id, id));
 			}
-			return { setupDone: id, ...res };
+			return { setupDone: `${id}:${scope}`, ...res };
 		} catch (e) {
 			const msg = e instanceof AgentError ? e.message : t('git.setupFailed');
 			return fail(502, { error: msg });

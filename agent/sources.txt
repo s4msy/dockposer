@@ -3,5 +3,6 @@ git.go
 go.mod
 main.go
 pods.go
+pods_edit.go
 prune.go
 update.go

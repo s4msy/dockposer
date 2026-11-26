@@ -599,7 +599,7 @@
 		{/if}
 
 		<form method="POST" action="?/toggleGit" use:enhance style="margin: var(--space-2) 0; display: flex; align-items: center; gap: var(--space-2);">
-			<button style="width: auto; min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent; color: {data.gitTracking ? 'var(--color-ok)' : 'var(--color-text-dim)'}; border: 1px solid currentColor;">
+			<button style="width: auto; flex-shrink: 0; white-space: nowrap; min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent; color: {data.gitTracking ? 'var(--color-ok)' : 'var(--color-text-dim)'}; border: 1px solid currentColor;">
 				{data.gitTracking ? t('stack.gitOn') : t('stack.gitOff')}
 			</button>
 			<small style="color: var(--color-text-dim);">

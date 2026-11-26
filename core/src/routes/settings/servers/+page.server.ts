@@ -1,14 +1,14 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
 import { randomBytes } from 'crypto';
-import { db } from '$lib/server/db';
-import { servers } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { servers } from '#lib/server/db/schema.ts';
 import { eq } from 'drizzle-orm';
-import { requireUser } from '$lib/server/guards';
-import { translator, type Translator } from '$lib/i18n';
-import { checkHealth, fetchPruneInfo, runPrune, AgentError } from '$lib/server/agents/client';
-import { localZone, parseHhMm } from '$lib/server/alerts/quiet';
-import { decrypt, encrypt } from '$lib/server/crypto';
+import { requireUser } from '#lib/server/guards.ts';
+import { translator, type Translator } from '#lib/i18n/index.ts';
+import { checkHealth, fetchPruneInfo, runPrune, AgentError } from '#lib/server/agents/client.ts';
+import { localZone, parseHhMm } from '#lib/server/alerts/quiet.ts';
+import { decrypt, encrypt } from '#lib/server/crypto.ts';
 
 /** ssh://user@host[:port] — fängt insbesondere den Doppelpunkt-Tippfehler ab. */
 function validateSshUrl(
@@ -101,7 +101,7 @@ export const actions: Actions = {
 			.where(eq(servers.id, id));
 
 		// Die laufende Event-Verbindung zeigt noch auf das alte Ziel.
-		const { restartServerListener } = await import('$lib/server/alerts/listener');
+		const { restartServerListener } = await import('#lib/server/alerts/listener.ts');
 		restartServerListener(id);
 		return { edited: id };
 	},

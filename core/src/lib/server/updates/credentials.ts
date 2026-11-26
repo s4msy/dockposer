@@ -1,9 +1,9 @@
 // Zugangsdaten für private Registries — Nachschlagen nach Host, mit kurzem
 // Cache, damit ein Check-Durchlauf über viele Stacks nicht dutzendfach die DB
 // befragt. Secrets liegen AES-verschlüsselt und werden nur hier entschlüsselt.
-import { db } from '$lib/server/db';
-import { registryCredentials } from '$lib/server/db/schema';
-import { decrypt } from '$lib/server/crypto';
+import { db } from '#lib/server/db/index.ts';
+import { registryCredentials } from '#lib/server/db/schema.ts';
+import { decrypt } from '#lib/server/crypto.ts';
 import type { RegistryCredential } from './registry';
 
 const CACHE_TTL_MS = 60_000;

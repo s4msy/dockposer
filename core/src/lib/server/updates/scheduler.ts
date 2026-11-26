@@ -1,10 +1,10 @@
 // Update-Scheduler: prüft periodisch alle Stacks gegen die Registries (Default 6h)
 // und führt bei Policy 'auto' Updates mit Auto-Rollback direkt aus.
-import { db } from '$lib/server/db';
-import { servers, stacks } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { servers, stacks } from '#lib/server/db/schema.ts';
 import { eq } from 'drizzle-orm';
-import { decrypt } from '$lib/server/crypto';
-import { agentStream } from '$lib/server/agents/client';
+import { decrypt } from '#lib/server/crypto.ts';
+import { agentStream } from '#lib/server/agents/client.ts';
 import { checkStackUpdates, type UpdateEntry } from './checker';
 import { recordUpdateRun } from './run';
 import { syncUpdateAlert, clearUpdateAlert } from './notify';

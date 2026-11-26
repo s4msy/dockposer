@@ -1,7 +1,7 @@
 import type { RequestHandler } from './$types';
-import { error, json } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { pushSubscriptions } from '$lib/server/db/schema';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.ts';
+import { pushSubscriptions } from '#lib/server/db/schema.ts';
 import { and, eq } from 'drizzle-orm';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		keysP256dh: keys.p256dh,
 		keysAuth: keys.auth
 	});
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };
 
 export const DELETE: RequestHandler = async ({ locals, request }) => {
@@ -32,5 +32,5 @@ export const DELETE: RequestHandler = async ({ locals, request }) => {
 			eq(pushSubscriptions.endpoint, endpoint)
 		));
 	}
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

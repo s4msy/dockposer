@@ -1,6 +1,6 @@
 import type { LayoutServerLoad } from './$types';
-import { db } from '$lib/server/db';
-import { alerts } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { alerts } from '#lib/server/db/schema.ts';
 import { isNull } from 'drizzle-orm';
 import { count } from 'drizzle-orm';
 

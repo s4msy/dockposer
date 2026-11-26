@@ -1,9 +1,16 @@
-import { db } from '$lib/server/db';
-import { stacks, type servers } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { stacks, type servers } from '#lib/server/db/schema.ts';
 import { and, eq } from 'drizzle-orm';
-import { decrypt } from '$lib/server/crypto';
-import { fetchImages } from '$lib/server/agents/client';
-import { parseImageRef, registryDigest, manifestChildDigests, imageMeta, type ImageMeta } from './registry';
+import { decrypt } from '#lib/server/crypto.ts';
+import { fetchImages } from '#lib/server/agents/client.ts';
+import {
+	parseImageRef,
+	registryDigest,
+	manifestChildDigests,
+	imageMeta,
+	type ImageMeta,
+	type RegistryCredential
+} from './registry';
 import { credentialFor } from './credentials';
 
 export interface UpdateEntry {
@@ -30,8 +37,49 @@ type Server = typeof servers.$inferSelect;
 
 const toSha = (repoDigest: string) => repoDigest.split('@')[1] ?? '';
 
+/**
+ * Bereits ermittelte Metadaten aus dem letzten Prüflauf, nach Digest abgelegt.
+ *
+ * Ein Digest beschreibt genau ein Image — was einmal darüber bekannt ist, gilt
+ * für immer. Ohne diesen Vorrat verschwanden Herkunft und Bauzeit wieder aus
+ * der Anzeige, sobald eine einzelne Registry-Abfrage scheiterte (Zeitlimit,
+ * Rate-Limit bei Docker Hub). Nebenbei spart es Abfragen: Für einen schon
+ * bekannten Digest wird gar nicht erst gefragt.
+ */
+async function knownMeta(serverId: number, stackName: string): Promise<Map<string, ImageMeta>> {
+	const cache = new Map<string, ImageMeta>();
+	const [row] = await db
+		.select({ json: stacks.updatesJson })
+		.from(stacks)
+		.where(and(eq(stacks.serverId, serverId), eq(stacks.name, stackName)))
+		.limit(1);
+	if (!row?.json) return cache;
+	try {
+		for (const e of JSON.parse(row.json) as UpdateEntry[]) {
+			if (e.newMeta && e.latest) cache.set(e.latest, e.newMeta);
+			if (e.oldMeta && e.current) cache.set(e.current, e.oldMeta);
+		}
+	} catch {
+		/* unlesbarer Altbestand → einfach ohne Vorrat weiter */
+	}
+	return cache;
+}
+
 export async function checkStackUpdates(server: Server, stackName: string): Promise<UpdateEntry[]> {
 	const images = await fetchImages(server.baseUrl, decrypt(server.agentTokenEnc), stackName);
+	const metaCache = await knownMeta(server.id, stackName);
+	const metaFor = async (ref: ReturnType<typeof parseImageRef>, digest: string, cred?: RegistryCredential) => {
+		if (!digest) return null;
+		const cached = metaCache.get(digest);
+		if (cached) return cached;
+		const fetched = await imageMeta(ref, digest, cred).catch(() => null);
+		if (!fetched) {
+			console.warn(`[updates] Keine Metadaten für ${ref.repo}@${digest.slice(7, 19)}`);
+			return null;
+		}
+		metaCache.set(digest, fetched);
+		return fetched;
+	};
 	const entries: UpdateEntry[] = [];
 	for (const img of images) {
 		const ref = parseImageRef(img.image);
@@ -101,8 +149,8 @@ export async function checkStackUpdates(server: Server, stackName: string): Prom
 			// Ohne Bauzeitpunkt bleibt jede Meldung eine Behauptung, die man nur
 			// glauben oder anzweifeln kann.
 			const [newMeta, oldMeta] = await Promise.all([
-				imageMeta(ref, latest, cred).catch(() => null),
-				current ? imageMeta(ref, current, cred).catch(() => null) : Promise.resolve(null)
+				metaFor(ref, latest, cred),
+				metaFor(ref, current, cred)
 			]);
 			entries.push({
 				service: img.service,

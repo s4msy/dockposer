@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { ActionData } from './$types';
 	import { page } from '$app/state';
-	import { translator } from '$lib/i18n';
+	import { translator } from '#lib/i18n/index.ts';
 	let { form }: { form: ActionData } = $props();
 	const t = $derived(translator(page.data.locale ?? 'en'));
 </script>

@@ -1,9 +1,9 @@
 import type { Actions, PageServerLoad } from './$types';
-import { db } from '$lib/server/db';
-import { alerts, servers } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { alerts, servers } from '#lib/server/db/schema.ts';
 import { desc, eq, isNull, isNotNull } from 'drizzle-orm';
-import { requireUser } from '$lib/server/guards';
-import { translator, type MessageKey } from '$lib/i18n';
+import { requireUser } from '#lib/server/guards.ts';
+import { translator, type MessageKey } from '#lib/i18n/index.ts';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	requireUser(locals);

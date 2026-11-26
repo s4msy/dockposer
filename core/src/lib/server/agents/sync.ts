@@ -1,9 +1,9 @@
-import { db } from '$lib/server/db';
-import { servers, stacks } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { servers, stacks } from '#lib/server/db/schema.ts';
 import { and, eq, notInArray } from 'drizzle-orm';
-import { decrypt } from '$lib/server/crypto';
+import { decrypt } from '#lib/server/crypto.ts';
 import { checkHealth, fetchStacks } from './client';
-import { engine } from '$lib/server/alerts/engine';
+import { engine } from '#lib/server/alerts/engine.ts';
 
 // Zieht Health + Stack-Liste von einem Agent und aktualisiert den DB-Cache.
 // Grundsatz: bei Konflikt gewinnt der Agent/das Dateisystem.

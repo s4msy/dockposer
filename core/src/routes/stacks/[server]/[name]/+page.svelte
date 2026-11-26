@@ -1,10 +1,10 @@
 <script lang="ts">
 	import type { ActionData, PageData } from './$types';
 	import { enhance } from '$app/forms';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { page } from '$app/state';
-	import { translator } from '$lib/i18n';
-	import CodeEditor from '$lib/components/CodeEditor.svelte';
+	import { translator } from '#lib/i18n/index.ts';
+	import CodeEditor from '#lib/components/CodeEditor.svelte';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	const t = $derived(translator(page.data.locale ?? 'en'));
 
@@ -205,7 +205,7 @@
 			pushLine(`Verbindung abgebrochen: ${e}`, 'err');
 		} finally {
 			busy = null;
-			await invalidateAll();
+			await refreshAll();
 		}
 	}
 

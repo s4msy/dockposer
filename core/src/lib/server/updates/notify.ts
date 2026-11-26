@@ -4,7 +4,7 @@
 // erfuhr nie von einer neuen Version. Für Stacks auf Policy 'auto' gab es eine
 // Meldung nach dem Lauf — Stacks auf 'manual' blieben still, obwohl gerade dort
 // eine Entscheidung des Menschen nötig ist.
-import { engine } from '$lib/server/alerts/engine';
+import { engine } from '#lib/server/alerts/engine.ts';
 import type { UpdateEntry } from './checker';
 
 /** Identität der gefundenen Version(en) — ändert sie sich, ist es eine neue Meldung wert. */

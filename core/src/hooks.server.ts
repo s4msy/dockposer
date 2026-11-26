@@ -1,7 +1,7 @@
-import type { Handle, ServerInit } from '@sveltejs/kit';
-import { building } from '$app/environment';
-import { validateSession } from '$lib/server/auth';
-import { isLocale, localeFromHeader } from '$lib/i18n';
+import type { Handle, ServerInit } from '@sveltejs/kit/hooks';
+import { building } from '$app/env';
+import { validateSession } from '#lib/server/auth.ts';
+import { isLocale, localeFromHeader } from '#lib/i18n/index.ts';
 
 export const init: ServerInit = async () => {
 	if (building) return;
@@ -9,9 +9,9 @@ export const init: ServerInit = async () => {
 	const g = globalThis as typeof globalThis & { __dockposerAlertsStarted?: boolean };
 	if (g.__dockposerAlertsStarted) return;
 	g.__dockposerAlertsStarted = true;
-	const { startAlertSystem } = await import('$lib/server/alerts/listener');
+	const { startAlertSystem } = await import('#lib/server/alerts/listener.ts');
 	startAlertSystem().catch((e) => console.error('[alerts] Start fehlgeschlagen:', e));
-	const { startUpdateSystem } = await import('$lib/server/updates/scheduler');
+	const { startUpdateSystem } = await import('#lib/server/updates/scheduler.ts');
 	startUpdateSystem();
 };
 

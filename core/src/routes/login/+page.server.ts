@@ -1,10 +1,10 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { users } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { users } from '#lib/server/db/schema.ts';
 import { eq } from 'drizzle-orm';
-import { createSession, rateLimit, verifyPassword, verifyTotp } from '$lib/server/auth';
-import { translator } from '$lib/i18n';
+import { createSession, rateLimit, verifyPassword, verifyTotp } from '#lib/server/auth.ts';
+import { translator } from '#lib/i18n/index.ts';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	if (locals.user) redirect(303, '/');

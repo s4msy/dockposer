@@ -1,15 +1,15 @@
 import type { Actions, PageServerLoad } from './$types';
 import { error, fail } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { servers, stacks, updateRuns } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { servers, stacks, updateRuns } from '#lib/server/db/schema.ts';
 import { and, desc, eq } from 'drizzle-orm';
-import { requireUser } from '$lib/server/guards';
-import { translator } from '$lib/i18n';
-import { decrypt } from '$lib/server/crypto';
-import { fetchCompose, fetchStackPs, putCompose, deleteStack, fetchEditableFiles, fetchFile, putFile, fetchDriftDebug, deletePin, AgentError } from '$lib/server/agents/client';
-import { checkStackUpdates } from '$lib/server/updates/checker';
-import { syncUpdateAlert } from '$lib/server/updates/notify';
-import type { ServiceChange } from '$lib/server/updates/run';
+import { requireUser } from '#lib/server/guards.ts';
+import { translator } from '#lib/i18n/index.ts';
+import { decrypt } from '#lib/server/crypto.ts';
+import { fetchCompose, fetchStackPs, putCompose, deleteStack, fetchEditableFiles, fetchFile, putFile, fetchDriftDebug, deletePin, AgentError } from '#lib/server/agents/client.ts';
+import { checkStackUpdates } from '#lib/server/updates/checker.ts';
+import { syncUpdateAlert } from '#lib/server/updates/notify.ts';
+import type { ServiceChange } from '#lib/server/updates/run.ts';
 import { redirect } from '@sveltejs/kit';
 
 async function loadServer(serverId: string) {

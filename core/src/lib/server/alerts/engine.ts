@@ -2,10 +2,10 @@
 // matcht sie gegen Regeln, dedupliziert und schreibt Alerts in die DB.
 // Alles In-Memory-Zustandshaltung — bei Neustart des Core fangen Zähler bei
 // null an, was für Crash-Loops (Minuten-Fenster) verschmerzbar ist.
-import { db } from '$lib/server/db';
-import { alertRules, alerts, servers, stacks, alertType } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { alertRules, alerts, servers, stacks, alertType } from '#lib/server/db/schema.ts';
 import { and, eq, isNull } from 'drizzle-orm';
-import { translator, type MessageKey } from '$lib/i18n';
+import { translator, type MessageKey } from '#lib/i18n/index.ts';
 import { isQuiet } from './quiet';
 
 type AlertType = (typeof alertType)[number];

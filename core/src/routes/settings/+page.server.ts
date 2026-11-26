@@ -1,13 +1,13 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
 import QRCode from 'qrcode';
-import { db } from '$lib/server/db';
-import { users } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { users } from '#lib/server/db/schema.ts';
 import { eq } from 'drizzle-orm';
-import { requireUser } from '$lib/server/guards';
-import { generateTotpSecret, verifyTotp, verifyPassword } from '$lib/server/auth';
-import { translator } from '$lib/i18n';
-import { alertRules, pushSubscriptions, webauthnCredentials } from '$lib/server/db/schema';
+import { requireUser } from '#lib/server/guards.ts';
+import { generateTotpSecret, verifyTotp, verifyPassword } from '#lib/server/auth.ts';
+import { translator } from '#lib/i18n/index.ts';
+import { alertRules, pushSubscriptions, webauthnCredentials } from '#lib/server/db/schema.ts';
 import { and } from 'drizzle-orm';
 
 const LOCALE_OPTIONS = ['auto', 'de', 'en'];
@@ -38,8 +38,8 @@ const THEMES = [
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = requireUser(locals);
-	const { vapidPublicKey } = await import('$lib/server/push/vapid');
-	const { pushHealth } = await import('$lib/server/push/dispatch');
+	const { vapidPublicKey } = await import('#lib/server/push/vapid.ts');
+	const { pushHealth } = await import('#lib/server/push/dispatch.ts');
 	const health = await pushHealth(user.id);
 	const subs = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, user.id));
 	const ruleRows = await db.select().from(alertRules).where(eq(alertRules.scope, 'global'));
@@ -142,7 +142,7 @@ export const actions: Actions = {
 	// ntfy-Fallback: eine Topic-URL pro User
 	testPush: async ({ locals }) => {
 		const user = requireUser(locals);
-		const { sendTestPush } = await import('$lib/server/push/dispatch');
+		const { sendTestPush } = await import('#lib/server/push/dispatch.ts');
 		const { sent, errors } = await sendTestPush(user.id);
 		if (!sent) return fail(502, { testError: errors[0] ?? 'no-recipients' });
 		return { testSent: sent };

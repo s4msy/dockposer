@@ -3,7 +3,7 @@
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { translator } from '$lib/i18n';
+	import { translator } from '#lib/i18n/index.ts';
 	let { form }: { form: ActionData } = $props();
 	const t = $derived(translator(page.data.locale ?? 'en'));
 	let passkeyError = $state('');
@@ -22,7 +22,7 @@
 				body: JSON.stringify({ challengeId, response })
 			});
 			if (!res.ok) throw new Error(await res.text());
-			await goto('/', { invalidateAll: true });
+			await goto('/', { refreshAll: true });
 		} catch (e) {
 			// Abbruch durch den User ist kein Fehler
 			if (!String(e).includes('NotAllowedError')) passkeyError = t('login.passkeyFailed', { error: String(e) });

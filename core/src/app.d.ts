@@ -1,4 +1,4 @@
-import type { users } from '$lib/server/db/schema';
+import type { users } from '#lib/server/db/schema.ts';
 
 declare global {
 	namespace App {
@@ -11,7 +11,7 @@ declare global {
 				theme: string;
 				locale: string;
 			} | null;
-			locale: import('$lib/i18n').Locale;
+			locale: import('#lib/i18n/index.ts').Locale;
 		}
 	}
 }

@@ -1,9 +1,9 @@
-import { db } from '$lib/server/db';
-import { pushSubscriptions, users } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { pushSubscriptions, users } from '#lib/server/db/schema.ts';
 import { eq } from 'drizzle-orm';
-import { onAlert, type FiredAlert } from '$lib/server/alerts/engine';
+import { onAlert, type FiredAlert } from '#lib/server/alerts/engine.ts';
 import { webpush } from './vapid';
-import { translator, isLocale, type Locale } from '$lib/i18n';
+import { translator, isLocale, type Locale } from '#lib/i18n/index.ts';
 
 const SEV_ICON: Record<string, string> = { critical: '🔴', warning: '🟡', info: 'ℹ️' };
 const SEV_KEY = { critical: 'push.critical', warning: 'push.warning', info: 'push.info' } as const;

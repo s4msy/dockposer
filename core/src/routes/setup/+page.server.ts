@@ -1,9 +1,9 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { users } from '$lib/server/db/schema';
-import { createSession, hashPassword } from '$lib/server/auth';
-import { translator } from '$lib/i18n';
+import { db } from '#lib/server/db/index.ts';
+import { users } from '#lib/server/db/schema.ts';
+import { createSession, hashPassword } from '#lib/server/auth.ts';
+import { translator } from '#lib/i18n/index.ts';
 
 // Nur erreichbar, solange kein User existiert — danach 404-artig weg.
 async function noUsersYet() {

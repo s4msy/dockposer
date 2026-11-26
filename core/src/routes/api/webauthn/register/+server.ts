@@ -1,10 +1,10 @@
 import type { RequestHandler } from './$types';
-import { error, json } from '@sveltejs/kit';
-import { beginRegistration, finishRegistration } from '$lib/server/webauthn';
+import { error } from '@sveltejs/kit';
+import { beginRegistration, finishRegistration } from '#lib/server/webauthn.ts';
 
 export const GET: RequestHandler = async ({ locals }) => {
 	if (!locals.user) error(401, 'nicht angemeldet');
-	return json(await beginRegistration(locals.user.id, locals.user.username));
+	return Response.json(await beginRegistration(locals.user.id, locals.user.username));
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
@@ -12,5 +12,5 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const { challengeId, response, deviceName } = await request.json();
 	const result = await finishRegistration(locals.user.id, challengeId, response, String(deviceName ?? ''));
 	if (!result.ok) error(400, result.error ?? 'fehlgeschlagen');
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

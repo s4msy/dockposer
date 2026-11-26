@@ -2,7 +2,7 @@
 	import type { PageData } from './$types';
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
-	import { translator } from '$lib/i18n';
+	import { translator } from '#lib/i18n/index.ts';
 	let { data }: { data: PageData } = $props();
 	const t = $derived(translator(page.data.locale ?? 'en'));
 

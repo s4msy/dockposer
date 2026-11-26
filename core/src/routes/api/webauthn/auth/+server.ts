@@ -1,11 +1,11 @@
 import type { RequestHandler } from './$types';
-import { error, json } from '@sveltejs/kit';
-import { beginAuthentication, finishAuthentication } from '$lib/server/webauthn';
-import { createSession, rateLimit } from '$lib/server/auth';
+import { error } from '@sveltejs/kit';
+import { beginAuthentication, finishAuthentication } from '#lib/server/webauthn.ts';
+import { createSession, rateLimit } from '#lib/server/auth.ts';
 
 export const GET: RequestHandler = async ({ getClientAddress }) => {
 	if (!rateLimit(`webauthn:${getClientAddress()}`, 20, 60_000)) error(429, 'zu viele Versuche');
-	return json(await beginAuthentication());
+	return Response.json(await beginAuthentication());
 };
 
 export const POST: RequestHandler = async ({ request, cookies, getClientAddress }) => {
@@ -18,5 +18,5 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 		userAgent: request.headers.get('user-agent') ?? undefined,
 		ip
 	});
-	return json({ ok: true });
+	return Response.json({ ok: true });
 };

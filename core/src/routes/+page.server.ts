@@ -1,11 +1,11 @@
 import type { PageServerLoad } from './$types';
-import { requireUser } from '$lib/server/guards';
-import { db } from '$lib/server/db';
+import { requireUser } from '#lib/server/guards.ts';
+import { db } from '#lib/server/db/index.ts';
 import { and, desc, gte, inArray, isNull, ne } from 'drizzle-orm';
-import { alerts, servers as serversTable, updateRuns } from '$lib/server/db/schema';
-import { syncAll } from '$lib/server/agents/sync';
-import { fetchUnmanaged } from '$lib/server/agents/client';
-import { decrypt } from '$lib/server/crypto';
+import { alerts, servers as serversTable, updateRuns } from '#lib/server/db/schema.ts';
+import { syncAll } from '#lib/server/agents/sync.ts';
+import { fetchUnmanaged } from '#lib/server/agents/client.ts';
+import { decrypt } from '#lib/server/crypto.ts';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const user = requireUser(locals);
@@ -103,7 +103,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	// Zustand des Alarmwegs. Ein Werkzeug, das nicht mehr benachrichtigen kann,
 	// muss das dort sagen, wo man täglich hinsieht — nicht in den Einstellungen.
-	const { pushHealth } = await import('$lib/server/push/dispatch');
+	const { pushHealth } = await import('#lib/server/push/dispatch.ts');
 	const push = await pushHealth();
 
 	return {

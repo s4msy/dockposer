@@ -1,8 +1,8 @@
-import { db } from '$lib/server/db';
-import { servers, stacks, updateRuns } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { servers, stacks, updateRuns } from '#lib/server/db/schema.ts';
 import { and, desc, eq, notInArray } from 'drizzle-orm';
-import { engine } from '$lib/server/alerts/engine';
-import { translator } from '$lib/i18n';
+import { engine } from '#lib/server/alerts/engine.ts';
+import { translator } from '#lib/i18n/index.ts';
 import { parseImageRef, imageMeta, type ImageMeta } from './registry';
 import { credentialFor } from './credentials';
 

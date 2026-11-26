@@ -1,10 +1,10 @@
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { servers } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { servers } from '#lib/server/db/schema.ts';
 import { eq } from 'drizzle-orm';
-import { decrypt } from '$lib/server/crypto';
-import { agentStream, AgentError } from '$lib/server/agents/client';
+import { decrypt } from '#lib/server/crypto.ts';
+import { agentStream, AgentError } from '#lib/server/agents/client.ts';
 
 export const GET: RequestHandler = async ({ locals, params, url }) => {
 	if (!locals.user) error(401, 'nicht angemeldet');

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { highlightFor } from '$lib/highlight';
+	import { highlightFor } from '#lib/highlight.ts';
 
 	let {
 		value = $bindable(''),

@@ -1,15 +1,15 @@
 <script lang="ts">
 	import type { ActionData, PageData } from './$types';
-	import { invalidateAll } from '$app/navigation';
+	import { refreshAll } from '$app/navigation';
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
-	import { invalidateAll as reload } from '$app/navigation';
-	import { translator, LOCALE_LABELS, LOCALES } from '$lib/i18n';
+	import { refreshAll as reload } from '$app/navigation';
+	import { translator, LOCALE_LABELS, LOCALES } from '#lib/i18n/index.ts';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	const tr = $derived(translator(page.data.locale ?? 'en'));
 
 	$effect(() => {
-		if (form?.totpDone || form?.totpDisabled || form?.displaySaved) invalidateAll();
+		if (form?.totpDone || form?.totpDisabled || form?.displaySaved) refreshAll();
 	});
 
 	let pushState = $state<'unknown' | 'unsupported' | 'off' | 'on' | 'busy'>('unknown');
@@ -53,7 +53,7 @@
 			});
 			if (!res.ok) throw new Error(`Server: ${res.status}`);
 			pushState = 'on';
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			pushError = tr('settings.pushFailed', { error: String(e) });
 			pushState = 'off';
@@ -108,7 +108,7 @@
 				body: JSON.stringify({ challengeId, response, deviceName })
 			});
 			if (!res.ok) throw new Error(await res.text());
-			await invalidateAll();
+			await refreshAll();
 		} catch (e) {
 			if (!String(e).includes('NotAllowedError')) passkeyError = tr('settings.passkeyFailed', { error: String(e) });
 		} finally {
@@ -129,7 +129,7 @@
 			await sub.unsubscribe();
 		}
 		pushState = 'off';
-		await invalidateAll();
+		await refreshAll();
 	}
 </script>
 

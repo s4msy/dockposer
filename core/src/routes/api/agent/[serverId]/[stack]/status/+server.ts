@@ -1,10 +1,10 @@
 import type { RequestHandler } from './$types';
-import { error, json } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { servers } from '$lib/server/db/schema';
+import { error } from '@sveltejs/kit';
+import { db } from '#lib/server/db/index.ts';
+import { servers } from '#lib/server/db/schema.ts';
 import { eq } from 'drizzle-orm';
-import { decrypt } from '$lib/server/crypto';
-import { fetchStackPs, fetchStats, AgentError } from '$lib/server/agents/client';
+import { decrypt } from '#lib/server/crypto.ts';
+import { fetchStackPs, fetchStats, AgentError } from '#lib/server/agents/client.ts';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
 	if (!locals.user) error(401, 'nicht angemeldet');
@@ -16,7 +16,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 			fetchStackPs(server.baseUrl, token, params.stack),
 			fetchStats(server.baseUrl, token).catch(() => []) // Stats sind nice-to-have
 		]);
-		return json({ containers, stats });
+		return Response.json({ containers, stats });
 	} catch (e) {
 		const msg = e instanceof AgentError ? e.message : 'Agent-Fehler';
 		error(502, msg);

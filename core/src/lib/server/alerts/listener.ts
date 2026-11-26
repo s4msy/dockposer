@@ -1,11 +1,11 @@
 // Event-Listener: abonniert die /v1/events-Streams aller Agents dauerhaft.
 // Reconnect mit Backoff, Offline-Erkennung nach 3 Fehlversuchen, Disk-Poll 60s.
 // Läuft als Singleton im Core-Prozess (Start über hooks.server.ts init).
-import { db } from '$lib/server/db';
-import { servers } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { servers } from '#lib/server/db/schema.ts';
 import { eq } from 'drizzle-orm';
-import { decrypt } from '$lib/server/crypto';
-import { agentStream, checkHealth } from '$lib/server/agents/client';
+import { decrypt } from '#lib/server/crypto.ts';
+import { agentStream, checkHealth } from '#lib/server/agents/client.ts';
 import { engine, type DockerEvent } from './engine';
 
 const RECONNECT_MIN_MS = 5_000;
@@ -139,7 +139,7 @@ async function serverRefreshLoop() {
 
 export async function startAlertSystem() {
 	await engine.ensureDefaultRules();
-	const { initPushDispatcher } = await import('$lib/server/push/dispatch');
+	const { initPushDispatcher } = await import('#lib/server/push/dispatch.ts');
 	initPushDispatcher();
 	const all = await db.select({ id: servers.id }).from(servers);
 	for (const { id } of all) {

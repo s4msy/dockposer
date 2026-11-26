@@ -1,12 +1,12 @@
 import type { Actions, PageServerLoad } from './$types';
 import { fail } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
-import { servers, stacks } from '$lib/server/db/schema';
+import { db } from '#lib/server/db/index.ts';
+import { servers, stacks } from '#lib/server/db/schema.ts';
 import { eq } from 'drizzle-orm';
-import { requireUser } from '$lib/server/guards';
-import { translator } from '$lib/i18n';
-import { decrypt, encrypt } from '$lib/server/crypto';
-import { fetchGitStatus, initGit, AgentError, type AgentGitStatus } from '$lib/server/agents/client';
+import { requireUser } from '#lib/server/guards.ts';
+import { translator } from '#lib/i18n/index.ts';
+import { decrypt, encrypt } from '#lib/server/crypto.ts';
+import { fetchGitStatus, initGit, AgentError, type AgentGitStatus } from '#lib/server/agents/client.ts';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	requireUser(locals);

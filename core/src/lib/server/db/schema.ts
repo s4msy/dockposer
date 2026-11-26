@@ -80,6 +80,11 @@ export const servers = sqliteTable('servers', {
 	baseUrl: text('base_url').notNull(), // https://agent1.example.com — TLS macht der Proxy
 	agentTokenEnc: text('agent_token_enc').notNull(), // AES-256-GCM — Core braucht das Token im Klartext für Agent-Calls
 	status: text('status', { enum: serverStatus }).notNull().default('offline'),
+	// Laufzeiten laut letztem Health-Check des Agents
+	dockerEnabled: integer('docker_enabled', { mode: 'boolean' }).notNull().default(true),
+	podsEnabled: integer('pods_enabled', { mode: 'boolean' }).notNull().default(false),
+	podmanVersion: text('podman_version'),
+	podsProblem: text('pods_problem'),
 	stacksPath: text('stacks_path').notNull().default('~/stacks'),
 	sshUrl: text('ssh_url'), // ssh://user@host für den "Terminal öffnen"-Button (M4)
 	gitRemoteEnc: text('git_remote_enc'), // Push-Ziel des Stacks-Repos, AES-verschlüsselt (kann Token enthalten)
@@ -97,6 +102,10 @@ export const servers = sqliteTable('servers', {
 });
 
 // Cache/Metadaten — Quelle bleibt das Dateisystem! Bei Konflikt gewinnt der Agent.
+// Stack = Docker-Compose-Ordner im Stacks-Pfad, Pod = Quadlet-Ordner im
+// Podman-Pfad (rootless, ab Podman 6). Beide teilen sich Tabelle und Ansicht.
+export const stackKind = ['stack', 'pod'] as const;
+
 export const stacks = sqliteTable(
 	'stacks',
 	{
@@ -105,6 +114,7 @@ export const stacks = sqliteTable(
 			.notNull()
 			.references(() => servers.id, { onDelete: 'cascade' }),
 		name: text('name').notNull(),
+		kind: text('kind', { enum: stackKind }).notNull().default('stack'),
 		composeHash: text('compose_hash'),
 		state: text('state', { enum: stackState }).notNull().default('unknown'),
 		servicesRunning: integer('services_running').notNull().default(0), // für die „3/4"-Anzeige
@@ -118,7 +128,7 @@ export const stacks = sqliteTable(
 		updatesJson: text('updates_json'), // Cache des letzten Registry-Checks: [{service,image,current,latest,status}]
 		lastUpdateCheck: integer('last_update_check', { mode: 'timestamp' })
 	},
-	(t) => [index('stacks_server_idx').on(t.serverId), uniqueIndex('stacks_name_idx').on(t.serverId, t.name)]
+	(t) => [index('stacks_server_idx').on(t.serverId), uniqueIndex('stacks_name_idx').on(t.serverId, t.kind, t.name)]
 );
 
 // ── Alerts ──────────────────────────────────────────────────────────────

@@ -36,14 +36,21 @@
 		<div class="server-head">
 			<span class="server-name">{server.name}</span>
 			<span class="dot {server.status === 'online' ? 'running' : 'stopped'}" aria-label={server.status}></span>
-			<a href="/servers/{server.id}/new-stack" style="text-decoration: none; margin-left: auto;">{t('overview.newStack')}</a>
+			{#if server.podsEnabled}<small class="runtime" title={t('overview.podmanTitle')}>Podman {server.podmanVersion}</small>{/if}
+			{#if server.dockerEnabled}
+				<a href="/servers/{server.id}/new-stack" style="text-decoration: none; margin-left: auto;">{t('overview.newStack')}</a>
+			{/if}
 		</div>
+		{#if server.podsProblem}
+			<small style="display: block; color: var(--color-warn);">{t('overview.podsProblem', { problem: server.podsProblem })}</small>
+		{/if}
 		<ul style="list-style:none; padding:0; margin:var(--space-2) 0 0;">
 			{#each stacksFor(server.id) as stack (stack.id)}
 				<li style="padding:0; border-top:1px solid var(--color-border);">
-					<a href="/stacks/{server.id}/{encodeURIComponent(stack.name)}" style="display:flex; align-items:center; gap:var(--space-2); padding:var(--space-3) 0; text-decoration:none; color:inherit; min-height:44px;">
+					<a href="/{stack.kind === 'pod' ? 'pods' : 'stacks'}/{server.id}/{encodeURIComponent(stack.name)}" style="display:flex; align-items:center; gap:var(--space-2); padding:var(--space-3) 0; text-decoration:none; color:inherit; min-height:44px;">
 					<span class="dot {stack.state}"></span>
 					{stack.name}
+					{#if stack.kind === 'pod'}<small class="kind-badge">Pod</small>{/if}
 					{#if stack.state === 'partial'}
 						<small>{stack.servicesRunning}/{stack.servicesTotal}</small>
 					{:else if stack.state === 'unhealthy'}
@@ -100,3 +107,14 @@
 	</div>
 {/each}
 </div>
+
+<style>
+	.runtime { color: var(--color-text-dim); font-size: 0.8rem; }
+	.kind-badge {
+		font-size: 0.7rem;
+		padding: 0 var(--space-1);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		color: var(--color-text-dim);
+	}
+</style>

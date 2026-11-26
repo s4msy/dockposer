@@ -2,7 +2,7 @@
 // und führt bei Policy 'auto' Updates mit Auto-Rollback direkt aus.
 import { db } from '#lib/server/db/index.ts';
 import { servers, stacks } from '#lib/server/db/schema.ts';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { decrypt } from '#lib/server/crypto.ts';
 import { agentStream } from '#lib/server/agents/client.ts';
 import { checkStackUpdates, type UpdateEntry } from './checker';
@@ -42,7 +42,11 @@ async function runPolicyUpdate(server: typeof servers.$inferSelect, stackName: s
 async function checkAll() {
 	const allServers = await db.select().from(servers);
 	for (const server of allServers) {
-		const serverStacks = await db.select().from(stacks).where(eq(stacks.serverId, server.id));
+		// Pods aktualisiert Podman selbst (auto-update, Phase 3) — hier nur Compose-Stacks
+		const serverStacks = await db
+			.select()
+			.from(stacks)
+			.where(and(eq(stacks.serverId, server.id), eq(stacks.kind, 'stack')));
 		for (const stack of serverStacks) {
 			try {
 				// Gestoppte Stacks werden nicht geprüft. Ein Stack, den jemand bewusst

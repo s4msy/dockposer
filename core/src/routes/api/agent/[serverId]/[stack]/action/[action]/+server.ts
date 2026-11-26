@@ -11,10 +11,13 @@ import { checkStackUpdates } from '#lib/server/updates/checker.ts';
 import { syncUpdateAlert } from '#lib/server/updates/notify.ts';
 
 const ALLOWED = new Set(['up', 'down', 'pull', 'restart', 'update']);
+// Pods laufen über systemd — andere Verben, kein Update (folgt in Phase 3)
+const ALLOWED_POD = new Set(['start', 'stop', 'restart']);
 
-export const POST: RequestHandler = async ({ locals, params }) => {
+export const POST: RequestHandler = async ({ locals, params, url }) => {
 	if (!locals.user) error(401, 'nicht angemeldet');
-	if (!ALLOWED.has(params.action)) error(400, 'unbekannte Aktion');
+	const isPod = url.searchParams.get('kind') === 'pod';
+	if (!(isPod ? ALLOWED_POD : ALLOWED).has(params.action)) error(400, 'unbekannte Aktion');
 
 	const [server] = await db.select().from(servers).where(eq(servers.id, Number(params.serverId)));
 	if (!server) error(404, 'Server nicht gefunden');
@@ -25,11 +28,11 @@ export const POST: RequestHandler = async ({ locals, params }) => {
 		const upstream = await agentStream(
 			server.baseUrl,
 			decrypt(server.agentTokenEnc),
-			`/v1/stacks/${encodeURIComponent(params.stack)}/${params.action}`
+			`/v1/${isPod ? 'pods' : 'stacks'}/${encodeURIComponent(params.stack)}/${params.action}`
 		);
 
 		let body = upstream.body!;
-		if (params.action === 'update') {
+		if (params.action === 'update' && !isPod) {
 			// Der Mitschnitt läuft im Hintergrund weiter, auch wenn der Browser abbricht.
 			// Vorher hing das Lesen am `pull` des Client-Streams: Bildschirm aus, Tab in den
 			// Hintergrund oder WLAN→Mobilfunk beendete den Stream, `cancel` kappte damit die

@@ -23,10 +23,11 @@ Dockposer fills the gap: **Compose only, multi-server through tiny agents, genui
 - **Config editing** — `.env` and other allow-listed files (e.g. `Caddyfile`) directly in the UI
 - **Optional Git backend** — every change committed to a repo in the stacks folder, with a sensible `.gitignore` that keeps volumes and secrets out
 - **Visibility** — shows containers running outside the stacks folder so nothing hides from you
+- **Podman pods** *(early)* — rootless Quadlet applications (`.pod`/`.container` files) appear next to Compose stacks: status, start/stop/restart, logs and the same alerts. Editing and updates via `podman auto-update` are coming. Requires Podman 6.0
 
 ### What it deliberately does not do
 
-No web terminal (it links to your native SSH client via `ssh://` instead), no registry browser, no volume explorer, no network management, no Kubernetes, no Swarm, no building images from Git, no multi-tenant RBAC.
+No web terminal (it links to your native SSH client via `ssh://` instead), no registry browser, no volume explorer, no network management, no Kubernetes, no Swarm, no rootful Podman, no building images from Git, no multi-tenant RBAC.
 
 Feature bloat is the documented cause of death for half the competition. Anything not on the list above needs a very good reason.
 
@@ -71,6 +72,8 @@ All screenshots are from a phone — that is the primary target. Detail views al
 **Core** (one machine, must be always on): Docker with the Compose plugin, a reverse proxy terminating TLS. HTTPS is mandatory — service workers and Web Push do not work without it.
 
 **Agent** (each managed server): Linux x86-64, Docker with the Compose plugin, a user in the `docker` group. `git` only if you want the Git backend.
+
+**Pods** (optional, per server): Podman 6.0 or newer, rootless, systemd with lingering enabled for the agent user (the installer does this). Pods live where Podman expects them — one folder per pod under `~/.config/containers/systemd/` — so `podman quadlet list`, `systemctl --user` and editing over SSH see exactly what Dockposer sees. Debian 13 and Ubuntu 24.04/26.04 ship older Podman versions; Fedora ships 6.0.
 
 Docker's `live-restore` is not required. Without it, a daemon restart (e.g. a package update) stops every container; Dockposer recognises this and sends a single notice instead of one alert per container, then reports any container that did not come back on its own.
 
@@ -125,6 +128,8 @@ curl -fsSL <RAW-BASE>/agent/install.sh | sudo sh -s -- \
 ```
 
 `<RAW-BASE>` is your repository's raw URL up to `…/raw/branch/main`. The installer is idempotent — run it again to update the agent binary.
+
+For Podman pods add `--pods` (default path `~/.config/containers/systemd`, override with `--pods-path`). On a host without Docker add `--no-docker` as well — the agent then manages pods only. `--user` must be a regular user; pods run rootless.
 
 **Do not skip `--listen`.** The agent binds to `127.0.0.1` by default, which makes it unreachable from the core on another machine. Use the address of the interface the core reaches it on (VPN or LAN). See [`agent/README.md`](agent/README.md) for details, firewall rules and troubleshooting.
 

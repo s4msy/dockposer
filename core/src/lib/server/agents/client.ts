@@ -2,8 +2,11 @@
 
 export interface AgentHealth {
 	version: string;
+	/** leer auf reinen Podman-Hosts (Agent ohne Stacks-Ordner) */
 	docker_version: string;
 	disk: { stacks_path: string; free_bytes: number };
+	/** ab Agent 0.5.0 */
+	pods?: { enabled: boolean; path: string; podman_version: string; problem: string };
 }
 
 export class AgentError extends Error {
@@ -272,3 +275,11 @@ export const fetchPruneInfo = (baseUrl: string, token: string) =>
 export const runPrune = (baseUrl: string, token: string) =>
 	// Löschen vieler Ebenen dauert auf langsamen Platten spürbar — großzügiges Limit.
 	agentFetch<AgentPrune>(baseUrl, token, '/v1/prune/images', { method: 'POST' }, 180_000);
+
+// ── Pods (Podman/Quadlet, ab Agent 0.5.0) ───────────────────────────────
+// Gleiches Format wie Stacks: Liste, ps und Stats sind deckungsgleich.
+export const fetchPods = (baseUrl: string, token: string) =>
+	agentFetch<AgentStack[]>(baseUrl, token, '/v1/pods');
+
+export const fetchPodPs = (baseUrl: string, token: string, pod: string) =>
+	agentFetch<AgentContainer[]>(baseUrl, token, `/v1/pods/${encodeURIComponent(pod)}/ps`);

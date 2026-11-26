@@ -13,6 +13,11 @@
 # die bestehende Config (Token, Listen-Adresse, Stacks-Pfad, editierbare
 # Dateien) bleibt erhalten, sofern der Wert nicht erneut übergeben wird.
 #
+# Pods (Podman/Quadlet, rootless, ab Podman 6.0):
+#   --pods                Pods im Standardpfad ~/.config/containers/systemd
+#   --pods-path PFAD      abweichender Quadlet-Pfad
+#   --no-docker           reiner Podman-Host: kein Stacks-Ordner, kein Docker
+#
 # Ohne Netzzugriff auf das Repo (Forge hinter Login/SSO): aus einem lokalen
 # Checkout bauen — braucht weder --base noch curl zum Repo:
 #   git clone ssh://git@git.example.com/OWNER/dockposer.git   # bzw. git pull
@@ -25,6 +30,9 @@ STACKS="${DOCKPOSER_STACKS:-}"
 LISTEN="${DOCKPOSER_LISTEN:-}"
 EDITABLE="${DOCKPOSER_EDITABLE_FILES:-}"
 RUN_USER="${DOCKPOSER_USER:-}"
+PODS=0
+PODS_PATH="${DOCKPOSER_PODS:-}"
+NO_DOCKER=0
 FROM_SOURCE=0
 SRC_DIR=""
 BIN_PATH="/usr/local/bin/dockposer-agent"
@@ -48,6 +56,9 @@ while [ $# -gt 0 ]; do
 		--listen) LISTEN="$2"; shift 2 ;;
 		--editable-files) EDITABLE="$2"; shift 2 ;;
 		--user)   RUN_USER="$2"; shift 2 ;;
+		--pods)   PODS=1; shift ;;
+		--pods-path) PODS=1; PODS_PATH="$2"; shift 2 ;;
+		--no-docker) NO_DOCKER=1; shift ;;
 		*) die "Unbekanntes Argument: $1" ;;
 	esac
 done
@@ -55,8 +66,31 @@ done
 # ── Vorbedingungen ──
 [ "$(id -u)" = "0" ] || die "Bitte als root ausführen (sudo)."
 [ -n "$SRC_DIR" ] || command -v curl >/dev/null || die "curl wird benötigt."
-command -v docker >/dev/null || die "Docker ist nicht installiert."
-docker compose version >/dev/null 2>&1 || die "Docker-Compose-Plugin fehlt (docker compose version schlägt fehl)."
+# Bestehende Config: Pods und reiner Podman-Betrieb bleiben beim Update erhalten
+if [ -f "$ENV_FILE" ]; then
+	if [ -z "$PODS_PATH" ]; then
+		PODS_PATH="$(grep '^DOCKPOSER_PODS=' "$ENV_FILE" | cut -d= -f2- || true)"
+	fi
+	[ -n "$PODS_PATH" ] && PODS=1
+	if [ "$PODS" = "1" ] && ! grep -q '^DOCKPOSER_STACKS=.' "$ENV_FILE"; then
+		NO_DOCKER=1
+	fi
+fi
+[ "$NO_DOCKER" = "1" ] && [ "$PODS" != "1" ] && die "--no-docker ohne --pods ergibt einen Agent ohne Aufgabe."
+
+if [ "$NO_DOCKER" != "1" ]; then
+	command -v docker >/dev/null || die "Docker ist nicht installiert (für einen reinen Podman-Host: --pods --no-docker)."
+	docker compose version >/dev/null 2>&1 || die "Docker-Compose-Plugin fehlt (docker compose version schlägt fehl)."
+fi
+if [ "$PODS" = "1" ]; then
+	command -v podman >/dev/null || die "Podman ist nicht installiert."
+	podman_version="$(podman version --format '{{.Client.Version}}' 2>/dev/null || true)"
+	case "$podman_version" in
+		[6-9].*|[1-9][0-9].*) ;;
+		*) die "Pods brauchen Podman 6.0 oder neuer (gefunden: ${podman_version:-unbekannt})." ;;
+	esac
+	command -v loginctl >/dev/null || die "loginctl fehlt — Pods brauchen systemd."
+fi
 arch="$(uname -m)"
 [ "$arch" = "x86_64" ] || die "Nur linux/amd64-Binary verfügbar (dein System: $arch). Bitte selbst bauen: go build im agent/-Ordner."
 
@@ -110,19 +144,36 @@ fi
 
 if [ -z "$RUN_USER" ]; then
 	suggested="${SUDO_USER:-}"
-	RUN_USER="$(ask 'Service-User (braucht Docker-Gruppenrechte)' "$suggested")"
+	RUN_USER="$(ask 'Service-User (braucht Docker-Gruppenrechte bzw. besitzt die Pods)' "$suggested")"
 fi
 [ -n "$RUN_USER" ] || die "Service-User fehlt."
 id "$RUN_USER" >/dev/null 2>&1 || die "User $RUN_USER existiert nicht."
+home_dir="$(getent passwd "$RUN_USER" | cut -d: -f6)"
+run_uid="$(id -u "$RUN_USER")"
 
-if [ -z "$STACKS" ]; then
-	home_dir="$(getent passwd "$RUN_USER" | cut -d: -f6)"
-	STACKS="$(ask 'Stacks-Pfad' "${home_dir}/stacks")"
+if [ "$NO_DOCKER" = "1" ]; then
+	STACKS=""
+else
+	if [ -z "$STACKS" ]; then
+		STACKS="$(ask 'Stacks-Pfad' "${home_dir}/stacks")"
+	fi
+	mkdir -p "$STACKS"
+	chown "$RUN_USER" "$STACKS" 2>/dev/null || true
 fi
-mkdir -p "$STACKS"
-chown "$RUN_USER" "$STACKS" 2>/dev/null || true
 
-if ! id -nG "$RUN_USER" | tr ' ' '\n' | grep -qx docker; then
+if [ "$PODS" = "1" ]; then
+	# Rootless: Die Pods gehören dem Service-User, nie root.
+	[ "$run_uid" != "0" ] || die "Pods laufen rootless — bitte einen normalen Benutzer als --user angeben."
+	[ -n "$PODS_PATH" ] || PODS_PATH="${home_dir}/.config/containers/systemd"
+	mkdir -p "$PODS_PATH"
+	chown -R "$RUN_USER" "${home_dir}/.config/containers" 2>/dev/null || chown "$RUN_USER" "$PODS_PATH"
+	# Linger: Die systemd-Benutzersitzung läuft auch ohne Login — sonst gäbe es
+	# nach einem Neustart weder die Pods noch ein `systemctl --user` für den Agent.
+	loginctl enable-linger "$RUN_USER"
+	say "→ Linger für $RUN_USER aktiviert, Pods unter $PODS_PATH."
+fi
+
+if [ "$NO_DOCKER" != "1" ] && ! id -nG "$RUN_USER" | tr ' ' '\n' | grep -qx docker; then
 	warn "$RUN_USER ist nicht in der docker-Gruppe."
 	add="$(ask 'Jetzt hinzufügen? (j/n)' 'j')"
 	if [ "$add" = "j" ] || [ "$add" = "J" ]; then
@@ -186,16 +237,38 @@ say "→ $BIN_PATH installiert (Version $installed_version)."
 
 # ── Config ──
 umask 077
-cat > "$ENV_FILE" << ENVEOF
-DOCKPOSER_TOKEN=$TOKEN
-DOCKPOSER_STACKS=$STACKS
-DOCKPOSER_LISTEN=$LISTEN
-DOCKPOSER_EDITABLE_FILES=$EDITABLE
-ENVEOF
+{
+	echo "DOCKPOSER_TOKEN=$TOKEN"
+	[ -n "$STACKS" ] && echo "DOCKPOSER_STACKS=$STACKS"
+	[ "$PODS" = "1" ] && echo "DOCKPOSER_PODS=$PODS_PATH"
+	echo "DOCKPOSER_LISTEN=$LISTEN"
+	echo "DOCKPOSER_EDITABLE_FILES=$EDITABLE"
+} > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 say "→ $ENV_FILE geschrieben (chmod 600)."
 
 # ── systemd ──
+# Härtung je nach Aufgabe. Rootless Podman braucht newuidmap/newgidmap — die
+# arbeiten mit Sonderrechten, die NoNewPrivileges unterbindet. Außerdem
+# schreibt Podman unter ~/.local/share/containers und /run/user/<uid>.
+if [ "$PODS" = "1" ]; then
+	HARDENING="# Pods (rootless Podman): newuidmap braucht Sonderrechte, deshalb ohne
+# NoNewPrivileges. ProtectSystem=full hält /usr, /boot und /etc schreibgeschützt.
+ProtectSystem=full
+PrivateTmp=true"
+	USER_SESSION="# Zugriff auf die systemd-Sitzung des Benutzers (systemctl --user, Podman)
+Environment=XDG_RUNTIME_DIR=/run/user/$run_uid
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$run_uid/bus"
+	USER_DEPS="After=user@$run_uid.service
+Wants=user@$run_uid.service"
+else
+	HARDENING="NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=$STACKS
+PrivateTmp=true"
+	USER_SESSION=""
+	USER_DEPS=""
+fi
 cat > "$UNIT_FILE" << UNITEOF
 [Unit]
 Description=Dockposer Agent
@@ -205,20 +278,19 @@ After=docker.service
 # greift auch kein Restart. Der Agent kommt mit fehlendem Docker selbst
 # zurecht und meldet das dem Core.
 Wants=docker.service
+$USER_DEPS
 
 [Service]
 Type=simple
 User=$RUN_USER
 EnvironmentFile=$ENV_FILE
+$USER_SESSION
 ExecStart=$BIN_PATH
 Restart=always
 RestartSec=5
 
 # Härtung
-NoNewPrivileges=true
-ProtectSystem=strict
-ReadWritePaths=$STACKS
-PrivateTmp=true
+$HARDENING
 
 [Install]
 WantedBy=multi-user.target

@@ -4,16 +4,18 @@ import { db } from '#lib/server/db/index.ts';
 import { servers } from '#lib/server/db/schema.ts';
 import { eq } from 'drizzle-orm';
 import { decrypt } from '#lib/server/crypto.ts';
-import { fetchStackPs, fetchStats, AgentError } from '#lib/server/agents/client.ts';
+import { fetchStackPs, fetchPodPs, fetchStats, AgentError } from '#lib/server/agents/client.ts';
 
-export const GET: RequestHandler = async ({ locals, params }) => {
+export const GET: RequestHandler = async ({ locals, params, url }) => {
 	if (!locals.user) error(401, 'nicht angemeldet');
 	const [server] = await db.select().from(servers).where(eq(servers.id, Number(params.serverId)));
 	if (!server) error(404, 'Server nicht gefunden');
 	const token = decrypt(server.agentTokenEnc);
 	try {
 		const [containers, stats] = await Promise.all([
-			fetchStackPs(server.baseUrl, token, params.stack),
+			url.searchParams.get('kind') === 'pod'
+				? fetchPodPs(server.baseUrl, token, params.stack)
+				: fetchStackPs(server.baseUrl, token, params.stack),
 			fetchStats(server.baseUrl, token).catch(() => []) // Stats sind nice-to-have
 		]);
 		return Response.json({ containers, stats });

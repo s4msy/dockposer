@@ -18,7 +18,8 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
 		const upstream = await agentStream(
 			server.baseUrl,
 			decrypt(server.agentTokenEnc),
-			`/v1/containers/${params.containerId}/logs?tail=${tail}`,
+			// Pod-Container liest der Agent über Podman, Stack-Container über Docker
+			`${url.searchParams.get('kind') === 'pod' ? '/v1/pods/containers' : '/v1/containers'}/${params.containerId}/logs?tail=${tail}`,
 			'GET'
 		);
 		return new Response(upstream.body, {

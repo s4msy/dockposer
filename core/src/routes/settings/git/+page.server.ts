@@ -14,7 +14,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const list = await db.query.servers.findMany({ orderBy: (s, { asc }) => [asc(s.name)] });
 	const trackedStacks = await db
 		.select({ serverId: stacks.serverId, name: stacks.name, gitTracking: stacks.gitTracking })
-		.from(stacks);
+		.from(stacks)
+		.where(eq(stacks.kind, 'stack')); // Git für Pods folgt in Phase 2 (eigenes Repo)
 
 	const rows = await Promise.all(
 		list.map(async (server) => {

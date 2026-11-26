@@ -565,7 +565,7 @@
 					<span style="flex: 1;">
 						{c.Service}
 						<small style="color: var(--color-text-dim); display: block;">
-							{c.Status}{#if c.Health}
+							{c.Status.replace(/\s*\((healthy|unhealthy|health: starting|starting)\)/, '')}{#if c.Health}
 								· <span style="color: {c.Health === 'unhealthy' ? 'var(--color-crit)' : c.Health === 'healthy' ? 'var(--color-ok)' : 'var(--color-warn)'}; font-weight: 700;">{c.Health}</span>
 							{/if}
 						</small>

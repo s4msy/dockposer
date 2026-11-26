@@ -31,7 +31,7 @@ import (
 	"time"
 )
 
-const version = "0.4.0"
+const version = "0.5.0"
 
 var (
 	token      string
@@ -57,44 +57,65 @@ func main() {
 	if listen == "" {
 		listen = "127.0.0.1:8720"
 	}
-	if token == "" || stacksDir == "" {
-		log.Fatal("DOCKPOSER_TOKEN und DOCKPOSER_STACKS müssen gesetzt sein")
+	// Ein reiner Podman-Host braucht keinen Stacks-Ordner — dann ist Docker aus.
+	if token == "" || (stacksDir == "" && os.Getenv("DOCKPOSER_PODS") == "") {
+		log.Fatal("DOCKPOSER_TOKEN und DOCKPOSER_STACKS (bzw. DOCKPOSER_PODS) müssen gesetzt sein")
 	}
-	if abs, err := filepath.Abs(stacksDir); err == nil {
-		stacksDir = abs
+	if stacksDir != "" {
+		if abs, err := filepath.Abs(stacksDir); err == nil {
+			stacksDir = abs
+		}
 	}
+	initPods()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/health", handleHealth)
 	mux.HandleFunc("GET /v1/stacks", handleStacks)
-	mux.HandleFunc("POST /v1/stacks", handleStackCreate)
+	mux.HandleFunc("POST /v1/stacks", dockerOnly(handleStackCreate))
 	mux.HandleFunc("GET /v1/stats", handleStats)
 	mux.HandleFunc("GET /v1/unmanaged", handleUnmanaged)
-	mux.HandleFunc("GET /v1/stacks/{name}/compose", handleComposeGet)
-	mux.HandleFunc("GET /v1/stacks/{name}/ps", handleStackPs)
-	mux.HandleFunc("GET /v1/stacks/{name}/drift", handleDriftDebug)
-	mux.HandleFunc("GET /v1/stacks/{name}/images", handleStackImages)
-	mux.HandleFunc("POST /v1/stacks/{name}/update", handleUpdate)
-	mux.HandleFunc("DELETE /v1/stacks/{name}/pin", handlePinDelete)
-	mux.HandleFunc("PUT /v1/stacks/{name}/compose", handleComposePut)
-	mux.HandleFunc("GET /v1/stacks/{name}/files", handleFilesList)
-	mux.HandleFunc("GET /v1/stacks/{name}/file", handleFileGet)
-	mux.HandleFunc("PUT /v1/stacks/{name}/file", handleFilePut)
-	mux.HandleFunc("DELETE /v1/stacks/{name}", handleStackDelete)
-	mux.HandleFunc("GET /v1/git/status", handleGitStatus)
-	mux.HandleFunc("POST /v1/git/init", handleGitInit)
-	mux.HandleFunc("POST /v1/stacks/{name}/up", action("up", "-d"))
-	mux.HandleFunc("POST /v1/stacks/{name}/down", action("down"))
-	mux.HandleFunc("POST /v1/stacks/{name}/pull", action("pull"))
-	mux.HandleFunc("POST /v1/stacks/{name}/restart", action("restart"))
-	mux.HandleFunc("GET /v1/prune/images", handlePruneInfo)
-	mux.HandleFunc("POST /v1/prune/images", handlePrune)
+	mux.HandleFunc("GET /v1/stacks/{name}/compose", dockerOnly(handleComposeGet))
+	mux.HandleFunc("GET /v1/stacks/{name}/ps", dockerOnly(handleStackPs))
+	mux.HandleFunc("GET /v1/stacks/{name}/drift", dockerOnly(handleDriftDebug))
+	mux.HandleFunc("GET /v1/stacks/{name}/images", dockerOnly(handleStackImages))
+	mux.HandleFunc("POST /v1/stacks/{name}/update", dockerOnly(handleUpdate))
+	mux.HandleFunc("DELETE /v1/stacks/{name}/pin", dockerOnly(handlePinDelete))
+	mux.HandleFunc("PUT /v1/stacks/{name}/compose", dockerOnly(handleComposePut))
+	mux.HandleFunc("GET /v1/stacks/{name}/files", dockerOnly(handleFilesList))
+	mux.HandleFunc("GET /v1/stacks/{name}/file", dockerOnly(handleFileGet))
+	mux.HandleFunc("PUT /v1/stacks/{name}/file", dockerOnly(handleFilePut))
+	mux.HandleFunc("DELETE /v1/stacks/{name}", dockerOnly(handleStackDelete))
+	mux.HandleFunc("GET /v1/git/status", dockerOnly(handleGitStatus))
+	mux.HandleFunc("POST /v1/git/init", dockerOnly(handleGitInit))
+	mux.HandleFunc("POST /v1/stacks/{name}/up", dockerOnly(action("up", "-d")))
+	mux.HandleFunc("POST /v1/stacks/{name}/down", dockerOnly(action("down")))
+	mux.HandleFunc("POST /v1/stacks/{name}/pull", dockerOnly(action("pull")))
+	mux.HandleFunc("POST /v1/stacks/{name}/restart", dockerOnly(action("restart")))
+	mux.HandleFunc("GET /v1/prune/images", dockerOnly(handlePruneInfo))
+	mux.HandleFunc("POST /v1/prune/images", dockerOnly(handlePrune))
 	mux.HandleFunc("GET /v1/events", handleEvents)
-	mux.HandleFunc("GET /v1/containers/{id}/logs", handleLogs)
+	mux.HandleFunc("GET /v1/containers/{id}/logs", dockerOnly(handleLogs))
+	mux.HandleFunc("GET /v1/pods", handlePods)
+	mux.HandleFunc("GET /v1/pods/{name}/ps", handlePodPs)
+	mux.HandleFunc("POST /v1/pods/{name}/start", podAction("start"))
+	mux.HandleFunc("POST /v1/pods/{name}/stop", podAction("stop"))
+	mux.HandleFunc("POST /v1/pods/{name}/restart", podAction("restart"))
+	mux.HandleFunc("GET /v1/pods/containers/{id}/logs", handlePodLogs)
 
 	initEditableFiles()
-	log.Printf("dockposer-agent v%s · stacks=%s · listen=%s · editierbar=%s",
-		version, stacksDir, listen, strings.Join(editablePatterns, ","))
+	pods := "aus"
+	switch {
+	case podsEnabled:
+		pods = podsDir + " (Podman " + podmanVersion + ")"
+	case podsProblem != "":
+		pods = "aus — " + podsProblem
+	}
+	stacksLog := stacksDir
+	if !dockerEnabled() {
+		stacksLog = "aus (kein Docker)"
+	}
+	log.Printf("dockposer-agent v%s · stacks=%s · pods=%s · listen=%s · editierbar=%s",
+		version, stacksLog, pods, listen, strings.Join(editablePatterns, ","))
 	log.Fatal(http.ListenAndServe(listen, auth(mux)))
 }
 
@@ -113,21 +134,47 @@ func auth(next http.Handler) http.Handler {
 
 // ── Handler ─────────────────────────────────────────────────────────────
 
+// Ohne Stacks-Ordner (reiner Podman-Host) sind alle Docker-Routen gesperrt.
+// Sie bauen ihre Pfade aus stacksDir; ein leerer Wert würde relativ zum
+// Arbeitsverzeichnis des Agents aufgelöst — Git liefe dann im falschen Ordner.
+func dockerOnly(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !dockerEnabled() {
+			httpErr(w, 404, "Docker ist auf diesem Server nicht eingerichtet (kein Stacks-Ordner)")
+			return
+		}
+		h(w, r)
+	}
+}
+
 func handleHealth(w http.ResponseWriter, r *http.Request) {
-	dockerVersion := "unknown"
-	if out, err := run(r.Context(), "", 10*time.Second, "docker", "version", "--format", "{{.Server.Version}}"); err == nil {
-		dockerVersion = strings.TrimSpace(out)
+	dockerVersion := ""
+	if dockerEnabled() {
+		dockerVersion = "unknown"
+		if out, err := run(r.Context(), "", 10*time.Second, "docker", "version", "--format", "{{.Server.Version}}"); err == nil {
+			dockerVersion = strings.TrimSpace(out)
+		}
+	}
+	diskPath := stacksDir
+	if diskPath == "" {
+		diskPath = podsDir
 	}
 	var st syscall.Statfs_t
 	var free, total uint64
-	if err := syscall.Statfs(stacksDir, &st); err == nil {
+	if err := syscall.Statfs(diskPath, &st); err == nil {
 		free = st.Bavail * uint64(st.Bsize)
 		total = st.Blocks * uint64(st.Bsize)
 	}
 	writeJSON(w, map[string]any{
 		"version":        version,
 		"docker_version": dockerVersion,
-		"disk":           map[string]any{"stacks_path": stacksDir, "free_bytes": free, "total_bytes": total},
+		"disk":           map[string]any{"stacks_path": diskPath, "free_bytes": free, "total_bytes": total},
+		"pods": map[string]any{
+			"enabled":        podsEnabled,
+			"path":           podsDir,
+			"podman_version": podmanVersion,
+			"problem":        podsProblem,
+		},
 	})
 }
 
@@ -144,6 +191,10 @@ type stackInfo struct {
 }
 
 func handleStacks(w http.ResponseWriter, r *http.Request) {
+	if !dockerEnabled() {
+		writeJSON(w, []stackInfo{})
+		return
+	}
 	entries, err := os.ReadDir(stacksDir)
 	if err != nil {
 		httpErr(w, 500, "Stacks-Ordner nicht lesbar: "+err.Error())
@@ -501,23 +552,22 @@ func driftingServices(expected, actual map[string]string, fileMtime, containerCr
 }
 
 func handleStats(w http.ResponseWriter, r *http.Request) {
-	out, err := run(r.Context(), "", 20*time.Second, "docker", "stats", "--no-stream", "--format", "json")
-	if err != nil {
-		httpErr(w, 502, "docker stats fehlgeschlagen: "+strings.TrimSpace(out))
-		return
-	}
-	type statRow struct {
-		Name     string `json:"Name"`
-		CPUPerc  string `json:"CPUPerc"`
-		MemPerc  string `json:"MemPerc"`
-		MemUsage string `json:"MemUsage"`
-	}
 	rows := []statRow{}
-	for _, line := range nonEmptyLines(out) {
-		var row statRow
-		if json.Unmarshal([]byte(line), &row) == nil {
-			rows = append(rows, row)
+	if dockerEnabled() {
+		out, err := run(r.Context(), "", 20*time.Second, "docker", "stats", "--no-stream", "--format", "json")
+		if err != nil && !podsEnabled {
+			httpErr(w, 502, "docker stats fehlgeschlagen: "+strings.TrimSpace(out))
+			return
 		}
+		for _, line := range nonEmptyLines(out) {
+			var row statRow
+			if json.Unmarshal([]byte(line), &row) == nil && row.Name != "" {
+				rows = append(rows, row)
+			}
+		}
+	}
+	if podsEnabled {
+		rows = append(rows, podmanStats(r.Context())...)
 	}
 	writeJSON(w, rows)
 }
@@ -608,6 +658,10 @@ func handleStackDelete(w http.ResponseWriter, r *http.Request) {
 // gehören. Rein informativ — Dockposer verwaltet sie nicht, macht sie nur sichtbar.
 // Zwei Sorten: compose-Stacks außerhalb des Pfads, und einzeln gestartete Container.
 func handleUnmanaged(w http.ResponseWriter, r *http.Request) {
+	if !dockerEnabled() {
+		writeJSON(w, []any{})
+		return
+	}
 	out, err := run(r.Context(), "", 20*time.Second, "docker", "ps",
 		"--filter", "status=running",
 		"--format", "{{.Names}}\t{{.Image}}\t{{.Label \"com.docker.compose.project\"}}\t{{.Label \"com.docker.compose.project.working_dir\"}}")
@@ -963,6 +1017,14 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
+
+	if podsEnabled {
+		go streamPodmanEvents(ctx, send)
+	}
+	if !dockerEnabled() {
+		<-ctx.Done() // reiner Podman-Host: nur Heartbeat und Podman-Events
+		return
+	}
 
 	// Zu Beginn jeder Verbindung den Zustand einmal melden ("Initial"). Sonst
 	// verpasst ein Core, dessen Verbindung während eines Docker-Ausfalls abriss,

@@ -102,7 +102,7 @@ export async function recordUpdateRun(
 	const [stackRow] = await db
 		.select({ id: stacks.id, feed: stacks.updatesJson })
 		.from(stacks)
-		.where(and(eq(stacks.serverId, serverId), eq(stacks.name, stackName)));
+		.where(and(eq(stacks.serverId, serverId), eq(stacks.name, stackName), eq(stacks.kind, 'stack')));
 	// Muss vor der Nachprüfung am Ende laufen: Die überschreibt den Feed, und
 	// mit ihm die schon ermittelten Angaben zum neuen Image.
 	let changes: ServiceChange[] = [];

@@ -25,7 +25,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 	const [stack] = await db
 		.select()
 		.from(stacks)
-		.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
+		.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name), eq(stacks.kind, 'stack')));
 
 	// Update-Historie aus dem Audit-Log (unabhängig davon, ob der Agent antwortet)
 	const runs = stack
@@ -140,7 +140,7 @@ export const actions: Actions = {
 		const policy = String((await request.formData()).get('policy') ?? '');
 		if (!['manual', 'auto'].includes(policy)) return fail(400, { policyError: t('stack.invalidPolicy') });
 		await db.update(stacks).set({ updatePolicy: policy as 'manual' | 'auto' })
-			.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
+			.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name), eq(stacks.kind, 'stack')));
 		return { policySaved: true };
 	},
 
@@ -153,7 +153,7 @@ export const actions: Actions = {
 		const [stackRow] = await db
 			.select({ gitTracking: stacks.gitTracking })
 			.from(stacks)
-			.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
+			.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name), eq(stacks.kind, 'stack')));
 		try {
 			const res = await putCompose(
 				server.baseUrl,
@@ -191,7 +191,7 @@ export const actions: Actions = {
 			return fail(502, { deleteError: msg });
 		}
 		// Cache-Eintrag entfernen, damit die Übersicht sofort stimmt
-		await db.delete(stacks).where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
+		await db.delete(stacks).where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name), eq(stacks.kind, 'stack')));
 		redirect(303, '/');
 	},
 
@@ -262,11 +262,11 @@ export const actions: Actions = {
 		const [row] = await db
 			.select({ gitTracking: stacks.gitTracking })
 			.from(stacks)
-			.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
+			.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name), eq(stacks.kind, 'stack')));
 		await db
 			.update(stacks)
 			.set({ gitTracking: !row?.gitTracking })
-			.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name)));
+			.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name), eq(stacks.kind, 'stack')));
 		return { gitToggled: true };
 	}
 };

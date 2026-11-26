@@ -51,7 +51,7 @@ async function knownMeta(serverId: number, stackName: string): Promise<Map<strin
 	const [row] = await db
 		.select({ json: stacks.updatesJson })
 		.from(stacks)
-		.where(and(eq(stacks.serverId, serverId), eq(stacks.name, stackName)))
+		.where(and(eq(stacks.serverId, serverId), eq(stacks.name, stackName), eq(stacks.kind, 'stack')))
 		.limit(1);
 	if (!row?.json) return cache;
 	try {
@@ -168,6 +168,6 @@ export async function checkStackUpdates(server: Server, stackName: string): Prom
 	await db
 		.update(stacks)
 		.set({ updatesJson: JSON.stringify(entries), lastUpdateCheck: new Date() })
-		.where(and(eq(stacks.serverId, server.id), eq(stacks.name, stackName)));
+		.where(and(eq(stacks.serverId, server.id), eq(stacks.name, stackName), eq(stacks.kind, 'stack')));
 	return entries;
 }

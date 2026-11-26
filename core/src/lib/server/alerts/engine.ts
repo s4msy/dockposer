@@ -7,15 +7,31 @@ import { alertRules, alerts, servers, stacks, alertType } from '#lib/server/db/s
 import { and, eq, isNull } from 'drizzle-orm';
 import { translator, type MessageKey } from '#lib/i18n/index.ts';
 import { isQuiet } from './quiet';
+import { decrypt } from '#lib/server/crypto.ts';
+import { fetchStackPs } from '#lib/server/agents/client.ts';
 
 type AlertType = (typeof alertType)[number];
 type Severity = 'info' | 'warning' | 'critical';
 
 export interface DockerEvent {
 	Action: string;
-	Actor: { Attributes: Record<string, string> };
-	time: number;
+	Actor?: { Attributes: Record<string, string> };
+	time?: number;
+	/** 'dockposer' bei Meldungen des Agents selbst (Daemon weg/zurück) */
+	Type?: string;
+	StartedAt?: string;
+	Initial?: string;
 }
+
+// ── Docker-Daemon-Neustarts ──
+// Ohne `live-restore` stoppt ein Daemon-Neustart alle Container. Deren Exits
+// kommen beim Agent an, BEVOR er merkt, dass der Daemon weg ist — beim
+// Herunterfahren bis zu ~15 s vorher (Docker wartet je Container auf SIGTERM).
+// Exit-Meldungen werden deshalb kurz zurückgehalten; kommt in der Zeit
+// „docker-down", gehören sie zum Neustart und sind kein Absturz.
+const DIE_HOLD_MS = 25_000;
+const DOCKER_DOWN_ALERT_MS = 90_000; // so lange darf ein Neustart dauern
+const COMEBACK_CHECK_MS = 120_000; // danach müssen die Container wieder laufen
 
 // Exit-Codes, die kein Alarm sind: 0 = sauber beendet, 143 = SIGTERM (compose down)
 const CLEAN_EXITS = new Set([0, 143]);
@@ -31,6 +47,14 @@ class AlertEngine {
 	private dieTimes = new Map<string, number[]>();
 	private suppressedProjects = new Map<string, number>();
 	private resolveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	// Daemon-Zustand je Server
+	private dockerDown = new Set<number>();
+	private dockerDownAlerted = new Set<number>();
+	private dockerDownTimers = new Map<number, ReturnType<typeof setTimeout>>();
+	/** zurückgehaltene Exits, je Server */
+	private pendingDies = new Map<number, { timer: ReturnType<typeof setTimeout>; container: string; project?: string }[]>();
+	/** vom Neustart betroffene Container (Name → Compose-Projekt), je Server */
+	private restartAffected = new Map<number, Map<string, string | undefined>>();
 	private rulesCache: { type: AlertType; enabled: boolean; thresholds: Partial<Thresholds> }[] = [];
 	private rulesLoadedAt = 0;
 
@@ -47,7 +71,9 @@ class AlertEngine {
 			{ type: 'pull_failed' },
 			{ type: 'update_rolled_back' },
 			{ type: 'update_success' },
-			{ type: 'update_available' }
+			{ type: 'update_available' },
+			{ type: 'docker_down' },
+			{ type: 'docker_restart' }
 		];
 		for (const def of defaults) {
 			const [existing] = await db.select({ id: alertRules.id }).from(alertRules)
@@ -121,6 +147,7 @@ class AlertEngine {
 
 	// ── Event-Verarbeitung ──
 	async handleEvent(serverId: number, evt: DockerEvent) {
+		if (evt.Type === 'dockposer') return this.handleDaemonEvent(serverId, evt);
 		const attrs = evt.Actor?.Attributes ?? {};
 		const container = attrs['name'] ?? 'unbekannt';
 		const project = attrs['com.docker.compose.project'];
@@ -132,30 +159,30 @@ class AlertEngine {
 
 		switch (action) {
 			case 'die': {
-				const exitCode = Number(attrs['exitCode'] ?? '0');
 				// laufender Stabilitäts-Timer ist hinfällig — Container ist wieder gestorben
 				const timer = this.resolveTimers.get(key);
 				if (timer) {
 					clearTimeout(timer);
 					this.resolveTimers.delete(key);
 				}
-				if (this.isSuppressed(serverId, project) || CLEAN_EXITS.has(exitCode)) return;
-
-				const crashRule = await this.rule('crash_loop');
-				const windowMs = (crashRule?.thresholds.window_min ?? 5) * 60_000;
-				const needed = crashRule?.thresholds.restarts ?? 3;
-				const times = (this.dieTimes.get(key) ?? []).filter((t) => Date.now() - t < windowMs);
-				times.push(Date.now());
-				this.dieTimes.set(key, times);
-
-				if (crashRule?.enabled && times.length >= needed) {
-					await this.fire('crash_loop', 'critical', serverId, project, container, 'alert.crashLoop', {
-						container, count: times.length, minutes: Math.round(windowMs / 60_000), code: exitCode
-					});
-				} else if ((await this.rule('container_exit'))?.enabled) {
-					await this.fire('container_exit', 'warning', serverId, project, container,
-						'alert.containerExit', { container, code: exitCode });
+				if (this.dockerDown.has(serverId)) {
+					this.markAffected(serverId, container, project);
+					return;
 				}
+				const pending = this.pendingDies.get(serverId) ?? [];
+				const entry = {
+					container,
+					project,
+					timer: setTimeout(() => {
+						const list = this.pendingDies.get(serverId) ?? [];
+						this.pendingDies.set(serverId, list.filter((e) => e !== entry));
+						void this.processDie(serverId, evt).catch((e) =>
+							console.error('[alerts] Exit-Auswertung fehlgeschlagen:', e)
+						);
+					}, DIE_HOLD_MS)
+				};
+				pending.push(entry);
+				this.pendingDies.set(serverId, pending);
 				return;
 			}
 			case 'oom': {
@@ -224,6 +251,134 @@ class AlertEngine {
 				: `${changedServices.slice(0, MAX_NAMED).join(', ')} +${changedServices.length - MAX_NAMED}`;
 		await this.fire('update_success', 'info', serverId, undefined, stackName,
 			'alert.updateSuccess', { stack: stackName, services }, true);
+	}
+
+	// ── Docker-Daemon weg/zurück (Meldungen des Agents ab 0.4.0) ──
+	private markAffected(serverId: number, container: string, project: string | undefined) {
+		const map = this.restartAffected.get(serverId) ?? new Map<string, string | undefined>();
+		map.set(container, project);
+		this.restartAffected.set(serverId, map);
+	}
+
+	private async serverName(serverId: number): Promise<string> {
+		const [row] = await db.select({ name: servers.name }).from(servers).where(eq(servers.id, serverId)).limit(1);
+		return row?.name ?? `#${serverId}`;
+	}
+
+	private async handleDaemonEvent(serverId: number, evt: DockerEvent) {
+		if (evt.Action === 'docker-down') {
+			if (this.dockerDown.has(serverId)) return; // Wiederholung beim Neuverbinden
+			this.dockerDown.add(serverId);
+			// Zurückgehaltene Exits gehören zum Neustart — verwerfen, aber merken
+			for (const e of this.pendingDies.get(serverId) ?? []) {
+				clearTimeout(e.timer);
+				this.markAffected(serverId, e.container, e.project);
+			}
+			this.pendingDies.delete(serverId);
+			const name = await this.serverName(serverId);
+			console.log(`[alerts] Docker auf ${name} nicht erreichbar — Exit-Meldungen werden zurückgehalten`);
+			// Ein Neustart dauert Sekunden. Bleibt Docker länger weg, ist es ein Ausfall.
+			this.dockerDownTimers.set(
+				serverId,
+				setTimeout(() => {
+					void (async () => {
+						if (!this.dockerDown.has(serverId)) return;
+						if (!(await this.rule('docker_down'))?.enabled) return;
+						const fired = await this.fire('docker_down', 'critical', serverId, undefined, undefined,
+							'alert.dockerDown', { server: name });
+						if (fired) this.dockerDownAlerted.add(serverId);
+					})().catch((e) => console.error('[alerts] docker_down fehlgeschlagen:', e));
+				}, DOCKER_DOWN_ALERT_MS)
+			);
+			return;
+		}
+
+		if (evt.Action === 'docker-up') {
+			// "Initial" ohne vorherigen Ausfall: normaler Verbindungsaufbau
+			if (!this.dockerDown.has(serverId)) return;
+			this.dockerDown.delete(serverId);
+			clearTimeout(this.dockerDownTimers.get(serverId));
+			this.dockerDownTimers.delete(serverId);
+			const name = await this.serverName(serverId);
+			const wasAlerted = this.dockerDownAlerted.delete(serverId);
+			// Langer Ausfall: Entwarnung kommt über das Auflösen von docker_down.
+			// Kurzer Neustart: eine einzige Info statt eines Alarms je Container.
+			await this.resolveByType(serverId, 'docker_down');
+			if (!wasAlerted && (await this.rule('docker_restart'))?.enabled) {
+				await this.fire('docker_restart', 'info', serverId, undefined, undefined,
+					'alert.dockerRestarted', { server: name }, true);
+			}
+			console.log(`[alerts] Docker auf ${name} wieder da — prüfe in ${COMEBACK_CHECK_MS / 1000}s, ob alles angelaufen ist`);
+			setTimeout(() => {
+				void this.checkComeback(serverId).catch((e) =>
+					console.error('[alerts] Nachprüfung nach Docker-Neustart fehlgeschlagen:', e)
+				);
+			}, COMEBACK_CHECK_MS);
+		}
+	}
+
+	/**
+	 * Laufen die vom Neustart gestoppten Container wieder? Mit `restart: always`
+	 * oder `unless-stopped` startet Docker sie selbst; mit `no` oder `on-failure`
+	 * bleiben sie aus — ohne `live-restore` die eigentliche Gefahr eines
+	 * Neustarts, und bisher meldete das niemand.
+	 */
+	private async checkComeback(serverId: number) {
+		const affected = this.restartAffected.get(serverId);
+		this.restartAffected.delete(serverId);
+		if (!affected?.size || this.dockerDown.has(serverId)) return;
+		const [server] = await db.select().from(servers).where(eq(servers.id, serverId)).limit(1);
+		if (!server) return;
+		const token = decrypt(server.agentTokenEnc);
+		const known = await this.managedProjects(serverId);
+
+		const byProject = new Map<string, string[]>();
+		for (const [container, project] of affected) {
+			if (!project || (known.size > 0 && !known.has(project.toLowerCase()))) continue;
+			byProject.set(project, [...(byProject.get(project) ?? []), container]);
+		}
+		const notBack: string[] = [];
+		for (const [project, containers] of byProject) {
+			if (this.isSuppressed(serverId, project)) continue; // gerade selbst gestoppt
+			const ps = await fetchStackPs(server.baseUrl, token, project).catch(() => null);
+			if (!ps) continue; // nicht prüfbar — lieber schweigen als raten
+			for (const c of containers) {
+				const row = ps.find((p) => p.Name === c);
+				if (!row || row.State !== 'running') notBack.push(c);
+			}
+		}
+		if (!notBack.length || !(await this.rule('docker_restart'))?.enabled) return;
+		notBack.sort();
+		await this.fire('docker_restart', 'warning', serverId, undefined, undefined, 'alert.dockerNotBack', {
+			server: server.name,
+			containers: notBack.length <= 5 ? notBack.join(', ') : `${notBack.slice(0, 5).join(', ')} +${notBack.length - 5}`
+		});
+	}
+
+	/** Exit nach Ablauf der Haltezeit tatsächlich bewerten (vormals direkt in handleEvent). */
+	private async processDie(serverId: number, evt: DockerEvent) {
+		const attrs = evt.Actor?.Attributes ?? {};
+		const container = attrs['name'] ?? 'unbekannt';
+		const project = attrs['com.docker.compose.project'];
+		const key = `${serverId}:${container}`;
+		const exitCode = Number(attrs['exitCode'] ?? '0');
+		if (this.isSuppressed(serverId, project) || CLEAN_EXITS.has(exitCode)) return;
+
+		const crashRule = await this.rule('crash_loop');
+		const windowMs = (crashRule?.thresholds.window_min ?? 5) * 60_000;
+		const needed = crashRule?.thresholds.restarts ?? 3;
+		const times = (this.dieTimes.get(key) ?? []).filter((t) => Date.now() - t < windowMs);
+		times.push(Date.now());
+		this.dieTimes.set(key, times);
+
+		if (crashRule?.enabled && times.length >= needed) {
+			await this.fire('crash_loop', 'critical', serverId, project, container, 'alert.crashLoop', {
+				container, count: times.length, minutes: Math.round(windowMs / 60_000), code: exitCode
+			});
+		} else if ((await this.rule('container_exit'))?.enabled) {
+			await this.fire('container_exit', 'warning', serverId, project, container,
+				'alert.containerExit', { container, code: exitCode });
+		}
 	}
 
 	// ── Verfügbare Updates (Stacks auf Policy 'manual') ──
@@ -431,7 +586,9 @@ class AlertEngine {
 				? 'alert.recoveredContainer'
 				: row.ruleType === 'disk_space'
 					? 'alert.recoveredDisk'
-					: 'alert.recoveredServer';
+					: row.ruleType === 'docker_down'
+						? 'alert.recoveredDocker'
+						: 'alert.recoveredServer';
 			const dedup = `${row.serverId}:${row.containerName ?? ''}:${key}`;
 			if (seen.has(dedup)) continue; // container_exit + crash_loop → eine Entwarnung
 			seen.add(dedup);

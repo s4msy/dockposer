@@ -13,6 +13,8 @@ export const alertType = [
 	'pull_failed',
 	'update_rolled_back',
 	'update_available',
+	'docker_down',
+	'docker_restart',
 	'disk_space',
 	'agent_offline',
 	'update_success'

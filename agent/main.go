@@ -31,7 +31,7 @@ import (
 	"time"
 )
 
-const version = "0.3.5"
+const version = "0.4.0"
 
 var (
 	token      string
@@ -907,6 +907,21 @@ func action(args ...string) http.HandlerFunc {
 
 // handleEvents: gefilterte docker events als Endlos-SSE-Stream — die Quelle
 // der Alert-Pipeline im Core. Kein Timeout; Client-Disconnect beendet den Prozess.
+// Event-Stream für den Core.
+//
+// Der Stream bleibt offen, auch wenn der Docker-Daemon weg ist. Früher endete
+// er mit `docker events`, sobald der Daemon stoppte — der Core verlor die
+// Verbindung, versuchte es erneut, scheiterte sofort wieder und meldete nach
+// 45 Sekunden „Agent nicht erreichbar", obwohl der Agent lief und nur Docker
+// (z. B. für ein Paket-Update) neu startete. Jetzt meldet der Agent den Zustand
+// des Daemons ausdrücklich als eigenes Ereignis:
+//
+//	{"Type":"dockposer","Action":"docker-down"}
+//	{"Type":"dockposer","Action":"docker-up","StartedAt":"…"}
+//
+// Ohne `live-restore` stoppt ein Daemon-Neustart alle Container. Der Core
+// braucht „docker-down", um die dabei entstehenden die-Ereignisse als Folge des
+// Neustarts zu erkennen statt als Abstürze. Ältere Cores ignorieren die Zeilen.
 func handleEvents(w http.ResponseWriter, r *http.Request) {
 	f, ok := w.(http.Flusher)
 	if !ok {
@@ -918,7 +933,103 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(200)
 
-	cmd := exec.CommandContext(r.Context(), "docker", "events",
+	ctx := r.Context()
+	var mu sync.Mutex // Heartbeat und Events schreiben aus verschiedenen Goroutinen
+	send := func(s string) {
+		mu.Lock()
+		defer mu.Unlock()
+		fmt.Fprint(w, s)
+		f.Flush()
+	}
+	sendMeta := func(action string, extra map[string]string) {
+		m := map[string]string{"Type": "dockposer", "Action": action}
+		for k, v := range extra {
+			m[k] = v
+		}
+		b, _ := json.Marshal(m)
+		send("data: " + string(b) + "\n\n")
+	}
+
+	// Heartbeat unabhängig davon, ob Docker gerade Events liefert oder fehlt
+	go func() {
+		t := time.NewTicker(20 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				send(": heartbeat\n\n") // SSE-Kommentarzeile, kein Event
+			}
+		}
+	}()
+
+	// Zu Beginn jeder Verbindung den Zustand einmal melden ("Initial"). Sonst
+	// verpasst ein Core, dessen Verbindung während eines Docker-Ausfalls abriss,
+	// die Rückkehr des Daemons und hält ihn für immer für ausgefallen.
+	dockerDown, initial := false, true
+	for ctx.Err() == nil {
+		startedAt, up := dockerStartedAt(ctx)
+		if initial {
+			initial = false
+			dockerDown = !up
+			if up {
+				sendMeta("docker-up", map[string]string{"StartedAt": startedAt, "Initial": "true"})
+			} else {
+				sendMeta("docker-down", map[string]string{"Initial": "true"})
+			}
+		}
+		if !up {
+			if !dockerDown {
+				dockerDown = true
+				sendMeta("docker-down", nil)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(3 * time.Second):
+			}
+			continue
+		}
+		if dockerDown {
+			dockerDown = false
+			sendMeta("docker-up", map[string]string{"StartedAt": startedAt})
+		}
+
+		streamDockerEvents(ctx, send)
+		if ctx.Err() != nil {
+			return
+		}
+		// `docker events` ist beendet, der Client aber noch da. Entweder ist der
+		// Daemon weg (nächster Durchlauf meldet docker-down) oder der Befehl ist
+		// aus anderem Grund ausgestiegen — dann einfach neu starten.
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+// Läuft der Daemon? Liefert zusätzlich seinen Startzeitpunkt, damit der Core
+// einen echten Neustart von einem bloßen Verbindungswackler unterscheiden kann.
+func dockerStartedAt(ctx context.Context) (string, bool) {
+	// Billigste Frage, die nur ein laufender Daemon beantworten kann
+	if _, err := run(ctx, "", 5*time.Second, "docker", "info", "--format", "{{.ServerVersion}}"); err != nil {
+		return "", false
+	}
+	// Startzeit aus systemd, falls vorhanden — reine Zusatzinfo für die Meldung
+	ts, err := run(ctx, "", 3*time.Second, "systemctl", "show", "docker", "--property=ActiveEnterTimestamp", "--value")
+	if err != nil {
+		return "", true
+	}
+	return strings.TrimSpace(ts), true
+}
+
+// Leitet `docker events` an den Client weiter, bis der Befehl endet oder der
+// Client geht.
+func streamDockerEvents(ctx context.Context, send func(string)) {
+	cmd := exec.CommandContext(ctx, "docker", "events",
 		"--format", "{{json .}}",
 		"--filter", "type=container",
 		"--filter", "event=die",
@@ -926,55 +1037,24 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 		"--filter", "event=health_status",
 		"--filter", "event=restart",
 		"--filter", "event=start")
-
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err)
-		f.Flush()
 		return
 	}
-	cmd.Stderr = cmd.Stdout
+	cmd.Stderr = nil // Fehlerausgaben gehören nicht in den Event-Strom
 	if err := cmd.Start(); err != nil {
-		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err)
-		f.Flush()
 		return
 	}
-
-	// Event-Zeilen über einen Channel einsammeln, damit der Heartbeat-Ticker
-	// unabhängig davon feuern kann, ob gerade Docker-Events fließen.
-	lines := make(chan string, 16)
-	go func() {
-		defer close(lines)
-		sc := bufio.NewScanner(stdout)
-		sc.Buffer(make([]byte, 64*1024), 1024*1024)
-		for sc.Scan() {
-			lines <- sc.Text()
-		}
-	}()
-
-	heartbeat := time.NewTicker(20 * time.Second)
-	defer heartbeat.Stop()
-
-	for {
-		select {
-		case <-r.Context().Done():
-			cmd.Process.Kill()
-			return
-		case line, ok := <-lines:
-			if !ok {
-				cmd.Wait()
-				fmt.Fprintf(w, "event: exit\ndata: 0\n\n")
-				f.Flush()
-				return
-			}
-			fmt.Fprintf(w, "data: %s\n\n", line)
-			f.Flush()
-		case <-heartbeat.C:
-			// SSE-Kommentarzeile: hält die Verbindung offen, ist kein Event
-			fmt.Fprint(w, ": heartbeat\n\n")
-			f.Flush()
+	sc := bufio.NewScanner(stdout)
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
+	for sc.Scan() {
+		line := sc.Text()
+		// Nur JSON durchreichen — eine Fehlermeldung beim Abbruch ist kein Event
+		if strings.HasPrefix(line, "{") {
+			send("data: " + line + "\n\n")
 		}
 	}
+	cmd.Wait()
 }
 
 func handleLogs(w http.ResponseWriter, r *http.Request) {

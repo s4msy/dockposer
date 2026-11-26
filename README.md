@@ -10,12 +10,14 @@ Dockposer manages Compose stacks that live as ordinary files in `~/stacks` (or a
 
 ## Why another one?
 
+Tested and set aside: **Portainer** (heavy, moves compose files into its own database), **Dockge** (Node.js overhead per instance, single-host thinking), **Dockhand** (weak mobile overview), **Arcane** (destroyed deployments during stack adoption), **Komodo** (powerful but overwhelming), **Dokploy/Coolify** (PaaS philosophy, Traefik lock-in).
+
 Dockposer fills the gap: **Compose only, multi-server through tiny agents, genuinely usable on a phone, and an alerting system that pushes straight to your device.**
 
 ### What it does
 
 - **Manage stacks** — start, stop, restart, edit `compose.yaml` with validation before writing, create and delete stacks
-- **Alerting with Web Push** — crash loops, unexpected exits, OOM kills, failing health checks, agents going offline, low disk space. Delivered to your phone via Web Push (no third-party service required) or ntfy
+- **Alerting with Web Push** — crash loops, unexpected exits, OOM kills, failing health checks, agents going offline, Docker daemon restarts and outages, low disk space. Delivered to your phone via Web Push (no third-party service required) or ntfy
 - **Updates with automatic rollback** — checks registries for new image digests, updates on request or on a schedule, watches a stabilisation window and rolls back to the previous digests if containers fail to come up healthy
 - **Live status** — per-stack state, per-service health and resource usage, streamed logs and command output
 - **Config editing** — `.env` and other allow-listed files (e.g. `Caddyfile`) directly in the UI
@@ -69,6 +71,8 @@ All screenshots are from a phone — that is the primary target. Detail views al
 **Core** (one machine, must be always on): Docker with the Compose plugin, a reverse proxy terminating TLS. HTTPS is mandatory — service workers and Web Push do not work without it.
 
 **Agent** (each managed server): Linux x86-64, Docker with the Compose plugin, a user in the `docker` group. `git` only if you want the Git backend.
+
+Docker's `live-restore` is not required. Without it, a daemon restart (e.g. a package update) stops every container; Dockposer recognises this and sends a single notice instead of one alert per container, then reports any container that did not come back on its own.
 
 ---
 

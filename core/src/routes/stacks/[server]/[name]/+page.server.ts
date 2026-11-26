@@ -1,15 +1,15 @@
 import type { Actions, PageServerLoad } from './$types';
 import { error, fail } from '@sveltejs/kit';
 import { db } from '#lib/server/db/index.ts';
-import { servers, stacks, updateRuns } from '#lib/server/db/schema.ts';
-import { and, desc, eq } from 'drizzle-orm';
+import { servers, stacks } from '#lib/server/db/schema.ts';
+import { and, eq } from 'drizzle-orm';
 import { requireUser } from '#lib/server/guards.ts';
 import { translator } from '#lib/i18n/index.ts';
 import { decrypt } from '#lib/server/crypto.ts';
 import { fetchCompose, fetchStackPs, putCompose, deleteStack, fetchEditableFiles, fetchFile, putFile, fetchDriftDebug, deletePin, AgentError } from '#lib/server/agents/client.ts';
 import { checkStackUpdates } from '#lib/server/updates/checker.ts';
 import { syncUpdateAlert } from '#lib/server/updates/notify.ts';
-import type { ServiceChange } from '#lib/server/updates/run.ts';
+import { loadHistory } from '#lib/server/updates/history.ts';
 import { redirect } from '@sveltejs/kit';
 
 async function loadServer(serverId: string) {
@@ -28,51 +28,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		.where(and(eq(stacks.serverId, server.id), eq(stacks.name, params.name), eq(stacks.kind, 'stack')));
 
 	// Update-Historie aus dem Audit-Log (unabhängig davon, ob der Agent antwortet)
-	const runs = stack
-		? await db
-				.select({
-					id: updateRuns.id,
-					trigger: updateRuns.trigger,
-					result: updateRuns.result,
-					oldDigestsJson: updateRuns.oldDigestsJson,
-					newDigestsJson: updateRuns.newDigestsJson,
-					logExcerpt: updateRuns.logExcerpt,
-					changesJson: updateRuns.changesJson,
-					startedAt: updateRuns.startedAt,
-					finishedAt: updateRuns.finishedAt
-				})
-				.from(updateRuns)
-				.where(eq(updateRuns.stackId, stack.id))
-				.orderBy(desc(updateRuns.startedAt))
-				.limit(15)
-		: [];
-	// Für die Anzeige interessiert nur, welche Services sich geändert haben
-	const history = runs.map((r) => {
-		let changed: string[] = [];
-		try {
-			const oldD: Record<string, string> = r.oldDigestsJson ? JSON.parse(r.oldDigestsJson) : {};
-			const newD: Record<string, string> = r.newDigestsJson ? JSON.parse(r.newDigestsJson) : {};
-			changed = Object.keys(newD).filter((svc) => oldD[svc] !== newD[svc]);
-		} catch {
-			/* alter Eintrag ohne Digest-Daten */
-		}
-		let changes: ServiceChange[] = [];
-		try {
-			changes = r.changesJson ? JSON.parse(r.changesJson) : [];
-		} catch {
-			/* defekter Eintrag → ohne Zusatzinfo anzeigen */
-		}
-		return {
-			id: r.id,
-			trigger: r.trigger,
-			result: r.result,
-			changed,
-			changes,
-			logExcerpt: r.logExcerpt,
-			startedAt: r.startedAt,
-			finishedAt: r.finishedAt
-		};
-	});
+	const history = await loadHistory(stack?.id);
 
 	try {
 		const [compose, containers, editable] = await Promise.all([

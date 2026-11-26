@@ -4,5 +4,6 @@ go.mod
 main.go
 pods.go
 pods_edit.go
+pods_update.go
 prune.go
 update.go

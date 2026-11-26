@@ -23,7 +23,7 @@ Dockposer fills the gap: **Compose only, multi-server through tiny agents, genui
 - **Config editing** — `.env` and other allow-listed files (e.g. `Caddyfile`) directly in the UI
 - **Optional Git backend** — every change committed to a repo in the stacks folder, with a sensible `.gitignore` that keeps volumes and secrets out
 - **Visibility** — shows containers running outside the stacks folder so nothing hides from you
-- **Podman pods** — rootless Quadlet applications (`.pod`/`.container` files) appear next to Compose stacks: status, start/stop/restart, logs and the same alerts. Create, edit and delete them in the browser; every save is checked with Podman's own Quadlet generator first, and an optional second Git repo in the Quadlet path records each change. Updates via `podman auto-update` are coming. Requires Podman 6.0
+- **Podman pods** — rootless Quadlet applications (`.pod`/`.container` files) appear next to Compose stacks: status, start/stop/restart, logs and the same alerts. Create, edit and delete them in the browser; every save is checked with Podman's own Quadlet generator first, and an optional second Git repo in the Quadlet path records each change. Updates work like for stacks — same feed, notifications, policy and history — and run through `podman auto-update` with a stabilization window and rollback. Requires Podman 6.0
 
 ### What it deliberately does not do
 

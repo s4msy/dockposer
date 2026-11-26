@@ -31,7 +31,7 @@ import (
 	"time"
 )
 
-const version = "0.6.0"
+const version = "0.7.0"
 
 var (
 	token      string
@@ -101,6 +101,8 @@ func main() {
 	mux.HandleFunc("POST /v1/pods/{name}/stop", podAction("stop"))
 	mux.HandleFunc("POST /v1/pods/{name}/restart", podAction("restart"))
 	mux.HandleFunc("GET /v1/pods/containers/{id}/logs", handlePodLogs)
+	mux.HandleFunc("GET /v1/pods/{name}/images", handlePodImages)
+	mux.HandleFunc("POST /v1/pods/{name}/update", handlePodUpdate)
 	mux.HandleFunc("POST /v1/pods", handlePodCreate)
 	mux.HandleFunc("DELETE /v1/pods/{name}", handlePodDelete)
 	mux.HandleFunc("GET /v1/pods/{name}/files", handlePodFiles)

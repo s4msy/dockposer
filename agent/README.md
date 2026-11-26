@@ -170,6 +170,17 @@ Quadlet-Dateien (`.pod .container .network .volume .image .build`, dazu `.env`) 
 
 Nach dem Schreiben lädt der Agent systemd neu (`daemon-reload`). Gestartet wird nichts automatisch; läuft der Pod, bietet die Seite „restart" an. Pod löschen geht nur gestoppt; benannte Volumes bleiben erhalten.
 
+## Pods aktualisieren
+
+Geprüft wird wie bei Stacks: Der Core vergleicht den Digest des laufenden Images mit der Registry (mit den hinterlegten Zugangsdaten, inklusive Release-Infos und Benachrichtigung). Ausgeführt wird mit `podman auto-update`, gefiltert auf die Container dieses Pods:
+
+1. Podman zieht das neue Image und startet die Unit neu. Scheitert der Neustart, rollt Podman selbst zurück.
+2. Danach beobachtet Dockposer das Stabilisierungsfenster (90 s). Stürzt ein Container ab oder meldet `unhealthy`, wird das alte Image zurückgetaggt und die Unit neu gestartet.
+
+Voraussetzung je Container: `AutoUpdate=registry` in der `.container`-Datei (die Vorlagen setzen es) und ein voll qualifizierter Image-Name (`docker.io/…`). Container ohne `AutoUpdate=` erscheinen im Feed mit Hinweis und werden nicht angefasst. Für ein echtes Urteil im Stabilisierungsfenster `HealthCmd=` und `Notify=healthy` setzen — sonst lässt sich nur feststellen, dass nichts abstürzt.
+
+Private Registries: als Agent-User `podman login --authfile ~/.config/containers/auth.json <registry>` — der Standardort unter `$XDG_RUNTIME_DIR` überlebt keinen Neustart, `~/.config/containers/auth.json` liest Podman ebenfalls. Wer Policy „automatisch" in Dockposer nutzt, sollte `podman-auto-update.timer` **nicht** zusätzlich aktivieren — sonst aktualisieren zwei Stellen unabhängig voneinander.
+
 ---
 
 # Private Registries

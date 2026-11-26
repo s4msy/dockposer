@@ -215,6 +215,7 @@ type podmanContainer struct {
 	State   string            `json:"State"`
 	Status  string            `json:"Status"`
 	Image   string            `json:"Image"`
+	ImageID string            `json:"ImageID"`
 	IsInfra bool              `json:"IsInfra"`
 }
 

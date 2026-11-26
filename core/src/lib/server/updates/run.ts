@@ -6,14 +6,8 @@ import { translator } from '#lib/i18n/index.ts';
 import { parseImageRef, imageMeta, type ImageMeta } from './registry';
 import { credentialFor } from './credentials';
 
-/** Was sich bei einem Dienst geändert hat — für die Update-Historie. */
-export interface ServiceChange {
-	service: string;
-	from?: string; // Version/Commit vorher
-	to?: string; // Version/Commit nachher
-	created?: string; // Bauzeit des neuen Images
-	releases?: string; // Release-Übersicht des Projekts
-}
+export type { ServiceChange } from '#lib/updates.ts';
+import type { ServiceChange, StackKind } from '#lib/updates.ts';
 
 const sha = (repoDigest: string) => repoDigest.split('@')[1] ?? '';
 const label = (m?: ImageMeta | null) => m?.version || m?.revision || undefined;
@@ -96,13 +90,14 @@ export async function recordUpdateRun(
 	stackName: string,
 	trigger: 'manual' | 'policy',
 	buffer: string,
-	startedAt: Date
+	startedAt: Date,
+	kind: StackKind = 'stack'
 ) {
 	const parsed = parseResultEvent(buffer);
 	const [stackRow] = await db
 		.select({ id: stacks.id, feed: stacks.updatesJson })
 		.from(stacks)
-		.where(and(eq(stacks.serverId, serverId), eq(stacks.name, stackName), eq(stacks.kind, 'stack')));
+		.where(and(eq(stacks.serverId, serverId), eq(stacks.name, stackName), eq(stacks.kind, kind)));
 	// Muss vor der Nachprüfung am Ende laufen: Die überschreibt den Feed, und
 	// mit ihm die schon ermittelten Angaben zum neuen Image.
 	let changes: ServiceChange[] = [];
@@ -142,15 +137,15 @@ export async function recordUpdateRun(
 	}
 
 	if (!parsed || parsed.result === 'failed' || parsed.result === 'rolled_back') {
-		const kind = parsed?.stage === 'pull' ? 'pull_failed' : 'update_rolled_back';
+		const alertKind = parsed?.stage === 'pull' ? 'pull_failed' : 'update_rolled_back';
 		const detail = parsed?.reason ?? translator('de')('alert.noResult');
 		const messageKey =
-			kind === 'pull_failed'
+			alertKind === 'pull_failed'
 				? 'alert.pullFailed'
 				: parsed?.result === 'rolled_back'
 					? 'alert.rolledBack'
 					: 'alert.updateFailed';
-		await engine.updateProblem(serverId, stackName, kind, messageKey, { stack: stackName, reason: detail });
+		await engine.updateProblem(serverId, stackName, alertKind, messageKey, { stack: stackName, reason: detail });
 	} else if (parsed.result === 'success') {
 		await engine.updateOk(serverId, stackName);
 		if (trigger === 'policy') {
@@ -169,7 +164,7 @@ export async function recordUpdateRun(
 		const [server] = await db.select().from(servers).where(eq(servers.id, serverId));
 		if (server) {
 			const { checkStackUpdates } = await import('./checker');
-			await checkStackUpdates(server, stackName);
+			await checkStackUpdates(server, stackName, kind);
 		}
 	} catch {
 		/* nächster Scheduler-Lauf korrigiert es */

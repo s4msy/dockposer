@@ -157,18 +157,8 @@ export async function manifestChildDigests(ref: ImageRef, cred?: RegistryCredent
 // den OCI-Labels bzw. im Config-Blob des Images — erreichbar über zwei
 // zusätzliche GETs, die nur bei tatsächlich gefundenen Updates anfallen.
 
-export interface ImageMeta {
-	/** ISO-Zeitpunkt des Builds (`created` im Config-Blob). */
-	created?: string;
-	/** org.opencontainers.image.version — oft der Git-Tag. */
-	version?: string;
-	/** org.opencontainers.image.revision — der Commit. */
-	revision?: string;
-	/** org.opencontainers.image.source — Repository-URL. */
-	source?: string;
-	/** Daraus abgeleitete Release-Seite, wenn die Quelle bekannt ist. */
-	releases?: string;
-}
+export type { ImageMeta } from '#lib/updates.ts';
+import type { ImageMeta } from '#lib/updates.ts';
 
 /** Aus der Quell-URL die Release-Übersicht ableiten (GitHub, Forgejo, Gitea, GitLab). */
 export function releasesUrl(source: string): string | undefined {

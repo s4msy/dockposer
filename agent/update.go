@@ -281,6 +281,15 @@ func wasBrokenBefore(before map[string]psRow, service string) bool {
 }
 
 func stabilize(ctx context.Context, dir string, window int, before map[string]psRow, emit func(string)) string {
+	return stabilizeWith(ctx, window, before, emit, func(ctx context.Context) ([]psRow, error) {
+		return composePs(ctx, dir)
+	})
+}
+
+// stabilizeWith ist das eigentliche Fenster — die Quelle der Zustände kommt von
+// außen, damit Pods (podman ps) dieselbe Bewertung bekommen wie Stacks.
+func stabilizeWith(ctx context.Context, window int, before map[string]psRow, emit func(string),
+	snapshot func(context.Context) ([]psRow, error)) string {
 	deadline := time.Now().Add(time.Duration(window) * time.Second)
 	lastNote := time.Now()
 	noted := map[string]bool{}
@@ -288,9 +297,9 @@ func stabilize(ctx context.Context, dir string, window int, before map[string]ps
 		if ctx.Err() != nil {
 			return "abgebrochen"
 		}
-		rows, err := composePs(ctx, dir)
+		rows, err := snapshot(ctx)
 		if err != nil {
-			return "compose ps fehlgeschlagen: " + err.Error()
+			return "Status nicht abrufbar: " + err.Error()
 		}
 		for _, row := range rows {
 			// Vorbelastete Services nicht dem Update anlasten — einmal erwähnen,

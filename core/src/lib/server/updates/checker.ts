@@ -13,25 +13,8 @@ import {
 } from './registry';
 import { credentialFor } from './credentials';
 
-export interface UpdateEntry {
-	service: string;
-	image: string;
-	current: string; // sha256:… (lokal bzw. der gepinnte Digest)
-	latest: string; // sha256:… (Registry)
-	status: 'update' | 'current' | 'unknown' | 'pinned';
-	/**
-	 * Nur bei 'pinned': Der Tag zeigt inzwischen auf ein anderes Image.
-	 * Rein informativ — anwendbar ist das nur durch Ändern der compose.yaml.
-	 */
-	newer?: boolean;
-	/** Bei 'unknown': Host, für den Zugangsdaten fehlen könnten. */
-	host?: string;
-	authRequired?: boolean;
-	/** Nur bei 'update': Herkunft und Bauzeit — beantwortet „ist das wirklich neu?". */
-	newMeta?: ImageMeta;
-	/** Dasselbe für das laufende Image, als Vergleichspunkt. */
-	oldMeta?: ImageMeta;
-}
+export type { UpdateEntry } from '#lib/updates.ts';
+import type { UpdateEntry, StackKind } from '#lib/updates.ts';
 
 type Server = typeof servers.$inferSelect;
 
@@ -46,12 +29,12 @@ const toSha = (repoDigest: string) => repoDigest.split('@')[1] ?? '';
  * Rate-Limit bei Docker Hub). Nebenbei spart es Abfragen: Für einen schon
  * bekannten Digest wird gar nicht erst gefragt.
  */
-async function knownMeta(serverId: number, stackName: string): Promise<Map<string, ImageMeta>> {
+async function knownMeta(serverId: number, stackName: string, kind: StackKind): Promise<Map<string, ImageMeta>> {
 	const cache = new Map<string, ImageMeta>();
 	const [row] = await db
 		.select({ json: stacks.updatesJson })
 		.from(stacks)
-		.where(and(eq(stacks.serverId, serverId), eq(stacks.name, stackName), eq(stacks.kind, 'stack')))
+		.where(and(eq(stacks.serverId, serverId), eq(stacks.name, stackName), eq(stacks.kind, kind)))
 		.limit(1);
 	if (!row?.json) return cache;
 	try {
@@ -65,9 +48,14 @@ async function knownMeta(serverId: number, stackName: string): Promise<Map<strin
 	return cache;
 }
 
-export async function checkStackUpdates(server: Server, stackName: string): Promise<UpdateEntry[]> {
-	const images = await fetchImages(server.baseUrl, decrypt(server.agentTokenEnc), stackName);
-	const metaCache = await knownMeta(server.id, stackName);
+/** Prüft Stacks und Pods gleich: lokale Digests gegen die Registry. */
+export async function checkStackUpdates(
+	server: Server,
+	stackName: string,
+	kind: StackKind = 'stack'
+): Promise<UpdateEntry[]> {
+	const images = await fetchImages(server.baseUrl, decrypt(server.agentTokenEnc), stackName, kind);
+	const metaCache = await knownMeta(server.id, stackName, kind);
 	const metaFor = async (ref: ReturnType<typeof parseImageRef>, digest: string, cred?: RegistryCredential) => {
 		if (!digest) return null;
 		const cached = metaCache.get(digest);
@@ -165,9 +153,15 @@ export async function checkStackUpdates(server: Server, stackName: string): Prom
 		}
 		entries.push({ service: img.service, image: img.image, current, latest, status });
 	}
+	if (kind === 'pod') {
+		// Ohne AutoUpdate= fasst `podman auto-update` den Container nicht an —
+		// ein Update wäre nicht anwendbar, also auch nicht als solches melden.
+		const policy = new Map(images.map((i) => [i.service, i.auto_update ?? '']));
+		for (const e of entries) if (e.status === 'update' && !policy.get(e.service)) e.status = 'noauto';
+	}
 	await db
 		.update(stacks)
 		.set({ updatesJson: JSON.stringify(entries), lastUpdateCheck: new Date() })
-		.where(and(eq(stacks.serverId, server.id), eq(stacks.name, stackName), eq(stacks.kind, 'stack')));
+		.where(and(eq(stacks.serverId, server.id), eq(stacks.name, stackName), eq(stacks.kind, kind)));
 	return entries;
 }

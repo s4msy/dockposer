@@ -72,16 +72,16 @@ WantedBy=default.target
 
 <form method="POST" class="card" use:enhance={() => async ({ update }) => update({ reset: false })}>
 	<label for="name">{t('newpod.nameLabel')}</label>
-	<input id="name" name="name" placeholder="freshrss" required autocomplete="off" bind:value={name} />
+	<input id="name" name="name" placeholder={t('newpod.namePlaceholder')} required autocomplete="off" bind:value={name} />
 
-	<fieldset style="border: none; padding: 0; margin: 0 0 var(--space-3); display: flex; gap: var(--space-4); flex-wrap: wrap;">
-		<label style="display: flex; gap: var(--space-2); align-items: center; font-weight: 400;">
-			<input type="radio" name="kindChoice" value="pod" checked={kind === 'pod'} onchange={() => { kind = 'pod'; reset('pod'); }} style="width: auto;" />
-			{t('newpod.kindPod')}
+	<fieldset style="border: none; padding: 0; margin: 0 0 var(--space-3); display: flex; gap: var(--space-3); flex-wrap: wrap;">
+		<label style="display: flex; gap: var(--space-2); align-items: flex-start; font-weight: 400; flex: 1; min-width: 14rem;">
+			<input type="radio" name="kindChoice" value="pod" checked={kind === 'pod'} onchange={() => { kind = 'pod'; reset('pod'); }} style="width: auto; margin-top: 0.3em;" />
+			<span>{t('newpod.kindPod')}<small style="display: block; color: var(--color-text-dim);">{t('newpod.kindPodHint')}</small></span>
 		</label>
-		<label style="display: flex; gap: var(--space-2); align-items: center; font-weight: 400;">
-			<input type="radio" name="kindChoice" value="single" checked={kind === 'single'} onchange={() => { kind = 'single'; reset('single'); }} style="width: auto;" />
-			{t('newpod.kindSingle')}
+		<label style="display: flex; gap: var(--space-2); align-items: flex-start; font-weight: 400; flex: 1; min-width: 14rem;">
+			<input type="radio" name="kindChoice" value="single" checked={kind === 'single'} onchange={() => { kind = 'single'; reset('single'); }} style="width: auto; margin-top: 0.3em;" />
+			<span>{t('newpod.kindSingle')}<small style="display: block; color: var(--color-text-dim);">{t('newpod.kindSingleHint')}</small></span>
 		</label>
 	</fieldset>
 

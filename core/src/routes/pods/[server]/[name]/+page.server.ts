@@ -15,10 +15,15 @@ import {
 	putPodFile,
 	type AgentContainer
 } from '#lib/server/agents/client.ts';
+import { checkStackUpdates } from '#lib/server/updates/checker.ts';
+import { syncUpdateAlert } from '#lib/server/updates/notify.ts';
+import { loadHistory } from '#lib/server/updates/history.ts';
+import type { UpdateEntry } from '#lib/updates.ts';
 
-// Pod = Quadlet-Ordner im Podman-Pfad des Servers. Phase 2: Dateien bearbeiten
-// (vom Agent mit dem Quadlet-Generator geprüft), Pod löschen, Git im eigenen
-// Repo des Quadlet-Pfads. Updates über `podman auto-update` folgen (Phase 3).
+// Pod = Quadlet-Ordner im Podman-Pfad des Servers. Dateien bearbeiten (vom
+// Agent mit dem Quadlet-Generator geprüft), Pod löschen, Git im eigenen Repo
+// des Quadlet-Pfads, Updates: geprüft wie bei Stacks gegen die Registry,
+// ausgeführt mit `podman auto-update` plus Stabilisierungsfenster.
 
 const FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(pod|container|network|volume|image|build|env)$/;
 
@@ -65,11 +70,22 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		}
 	}
 
+	let updates: UpdateEntry[] = [];
+	try {
+		updates = pod.updatesJson ? JSON.parse(pod.updatesJson) : [];
+	} catch {
+		/* defekter Cache → leerer Feed bis zur nächsten Prüfung */
+	}
+
 	return {
 		server: { id: server.id, name: server.name, sshUrl: server.sshUrl, podmanVersion: server.podmanVersion },
 		name: params.name,
 		state: pod.state,
 		gitTracking: pod.gitTracking,
+		updates,
+		lastUpdateCheck: pod.lastUpdateCheck,
+		updatePolicy: pod.updatePolicy,
+		history: await loadHistory(pod.id),
 		containers,
 		files,
 		path,
@@ -79,6 +95,33 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 };
 
 export const actions: Actions = {
+	checkUpdates: async ({ locals, params }) => {
+		requireUser(locals);
+		const t = translator(locals.locale);
+		const server = await loadServer(params.server);
+		try {
+			const entries = await checkStackUpdates(server, params.name, 'pod');
+			// Der Mensch sieht das Ergebnis gerade selbst — nur aufräumen, nicht pushen
+			await syncUpdateAlert(server.id, params.name, entries, 'manual', false).catch(() => {});
+			return { checked: true };
+		} catch (e) {
+			return fail(502, { checkError: e instanceof AgentError ? e.message : t('stack.checkFailed') });
+		}
+	},
+
+	setPolicy: async ({ locals, params, request }) => {
+		requireUser(locals);
+		const t = translator(locals.locale);
+		const server = await loadServer(params.server);
+		const policy = String((await request.formData()).get('policy') ?? '');
+		if (!['manual', 'auto'].includes(policy)) return fail(400, { checkError: t('stack.invalidPolicy') });
+		await db
+			.update(stacks)
+			.set({ updatePolicy: policy as 'manual' | 'auto' })
+			.where(podWhere(server.id, params.name));
+		return { policySaved: true };
+	},
+
 	saveFile: async ({ locals, params, request }) => {
 		const user = requireUser(locals);
 		const t = translator(locals.locale);

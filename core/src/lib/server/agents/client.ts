@@ -148,10 +148,18 @@ export interface AgentImage {
 	digest: string;
 	digests?: string[]; // alle RepoDigests des Images
 	Digest?: string; // Kompatibilität
+	/** nur Pods: Wert von AutoUpdate= (leer = podman auto-update fasst ihn nicht an) */
+	auto_update?: string;
 }
 
-export const fetchImages = (baseUrl: string, token: string, stack: string) =>
-	agentFetch<AgentImage[]>(baseUrl, token, `/v1/stacks/${encodeURIComponent(stack)}/images`, {}, 30_000);
+export const fetchImages = (baseUrl: string, token: string, stack: string, kind: 'stack' | 'pod' = 'stack') =>
+	agentFetch<AgentImage[]>(
+		baseUrl,
+		token,
+		`/v1/${kind === 'pod' ? 'pods' : 'stacks'}/${encodeURIComponent(stack)}/images`,
+		{},
+		30_000
+	);
 
 export const deleteStack = (baseUrl: string, token: string, stack: string) =>
 	agentFetch<{ deleted: boolean; name: string }>(baseUrl, token, `/v1/stacks/${encodeURIComponent(stack)}`, {

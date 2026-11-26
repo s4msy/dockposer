@@ -6,6 +6,8 @@
 	import { untrack } from 'svelte';
 	import { translator } from '#lib/i18n/index.ts';
 	import CodeEditor from '#lib/components/CodeEditor.svelte';
+	import UpdatesCard from '#lib/components/UpdatesCard.svelte';
+	import UpdateHistory from '#lib/components/UpdateHistory.svelte';
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	const t = $derived(translator(page.data.locale ?? 'en'));
 
@@ -24,7 +26,8 @@
 	function classify(line: string): string {
 		if (line.startsWith('$ ') || line.startsWith('──')) return 'cmd';
 		if (/— ok$|✓/.test(line)) return 'ok';
-		if (/error|failed|fehlgeschlagen|denied/i.test(line)) return 'err';
+		if (/error|failed|fehlgeschlagen|denied|Rollback|Instabil|unhealthy/i.test(line)) return 'err';
+		if (line.startsWith('  ')) return 'dim';
 		return '';
 	}
 	const pushLine = (text: string, cls?: string) => {
@@ -53,11 +56,11 @@
 		}
 	}
 
-	async function runAction(action: 'start' | 'stop' | 'restart') {
+	async function runAction(action: 'start' | 'stop' | 'restart' | 'update') {
 		if (busy) return;
 		busy = action;
 		output = [];
-		pushLine(`$ systemctl --user ${action} …`, 'cmd');
+		pushLine(action === 'update' ? '$ podman auto-update …' : `$ systemctl --user ${action} …`, 'cmd');
 		try {
 			const res = await fetch(`${api}/action/${action}?kind=pod`, { method: 'POST' });
 			if (!res.ok) {
@@ -65,7 +68,23 @@
 				return;
 			}
 			await readSse(res, (event, line) => {
-				if (event === 'exit') pushLine(line === '0' ? '— fertig —' : `— beendet mit Exit ${line} —`, line === '0' ? 'dim' : 'err');
+				if (event === 'result') {
+					try {
+						const r = JSON.parse(line);
+						if (r.result === 'success') {
+							const changed = Object.entries(r.new_digests ?? {}).filter(
+								([svc, d]) => (r.old_digests ?? {})[svc] !== d
+							).length;
+							pushLine(t('pod.updateResultOk', { n: changed }), 'ok');
+						} else if (r.result === 'rolled_back') {
+							pushLine(t('pod.updateResultRolledBack', { reason: r.reason ?? '' }), 'err');
+						} else {
+							pushLine(t('pod.updateResultFailed', { reason: r.reason ?? r.stage ?? '' }), 'err');
+						}
+					} catch {
+						pushLine(line);
+					}
+				} else if (event === 'exit') pushLine(line === '0' ? '— fertig —' : `— beendet mit Exit ${line} —`, line === '0' ? 'dim' : 'err');
 				else pushLine(line);
 			});
 		} catch (e) {
@@ -209,7 +228,7 @@
 	const current = $derived(data.files.find((f) => f.name === selected) ?? null);
 	const podFileName = $derived(data.files.find((f) => f.name.endsWith('.pod'))?.name ?? '');
 	const isNew = $derived(selected !== null && !current);
-	const podStopped = $derived(!data.containers.some((c) => c.State === 'running' || c.State === 'restarting'));
+	const podStopped = $derived(!containers.some((c) => c.State === 'running' || c.State === 'restarting'));
 	const NEW_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,100}\.(container|network|volume|image|build|env)$/;
 
 	function template(name: string): string {
@@ -339,6 +358,22 @@
 		</ul>
 	{/if}
 </div>
+
+<UpdatesCard
+	kind="pod"
+	updates={data.updates}
+	lastUpdateCheck={data.lastUpdateCheck}
+	stopped={podStopped}
+	healthHint={containers.some((c) => c.State === 'running' && !c.Health) ? t('pod.noHealthchecks') : null}
+	agentOffline={data.agentOffline}
+	busy={!!busy}
+	onRun={() => runAction('update')}
+	policy={data.updatePolicy}
+	checkError={form && 'checkError' in form ? (form.checkError ?? null) : null}
+	policySaved={!!(form && 'policySaved' in form)}
+/>
+
+<UpdateHistory history={data.history} />
 
 <div class="card">
 	<strong>{t('pod.files')}</strong>

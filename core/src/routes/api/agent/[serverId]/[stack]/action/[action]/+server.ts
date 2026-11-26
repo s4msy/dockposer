@@ -11,8 +11,8 @@ import { checkStackUpdates } from '#lib/server/updates/checker.ts';
 import { syncUpdateAlert } from '#lib/server/updates/notify.ts';
 
 const ALLOWED = new Set(['up', 'down', 'pull', 'restart', 'update']);
-// Pods laufen über systemd — andere Verben, kein Update (folgt in Phase 3)
-const ALLOWED_POD = new Set(['start', 'stop', 'restart']);
+// Pods laufen über systemd — andere Verben; Update über `podman auto-update`
+const ALLOWED_POD = new Set(['start', 'stop', 'restart', 'update']);
 
 export const POST: RequestHandler = async ({ locals, params, url }) => {
 	if (!locals.user) error(401, 'nicht angemeldet');
@@ -32,7 +32,7 @@ export const POST: RequestHandler = async ({ locals, params, url }) => {
 		);
 
 		let body = upstream.body!;
-		if (params.action === 'update' && !isPod) {
+		if (params.action === 'update') {
 			// Der Mitschnitt läuft im Hintergrund weiter, auch wenn der Browser abbricht.
 			// Vorher hing das Lesen am `pull` des Client-Streams: Bildschirm aus, Tab in den
 			// Hintergrund oder WLAN→Mobilfunk beendete den Stream, `cancel` kappte damit die
@@ -86,13 +86,13 @@ export const POST: RequestHandler = async ({ locals, params, url }) => {
 						/* Client war schon weg */
 					}
 				} finally {
-					await recordUpdateRun(server.id, params.stack, 'manual', buffer, startedAt).catch((e) =>
+					await recordUpdateRun(server.id, params.stack, 'manual', buffer, startedAt, isPod ? 'pod' : 'stack').catch((e) =>
 						console.error('[updates] Aufzeichnung fehlgeschlagen:', e)
 					);
 					// Frisch nachprüfen: Der Feed stimmt sofort, und eine offene
 					// „Update verfügbar"-Meldung verschwindet, statt bis zum nächsten
 					// Prüflauf (Default 6 h) im Alert-Center stehen zu bleiben.
-					await checkStackUpdates(server, params.stack)
+					await checkStackUpdates(server, params.stack, isPod ? 'pod' : 'stack')
 						.then((entries) => syncUpdateAlert(server.id, params.stack, entries, 'manual', false))
 						.catch((e) => console.warn('[updates] Nachprüfung fehlgeschlagen:', e));
 				}

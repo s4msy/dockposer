@@ -2,7 +2,8 @@
 // und führt bei Policy 'auto' Updates mit Auto-Rollback direkt aus.
 import { db } from '#lib/server/db/index.ts';
 import { servers, stacks } from '#lib/server/db/schema.ts';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import type { StackKind } from '#lib/updates.ts';
 import { decrypt } from '#lib/server/crypto.ts';
 import { agentStream } from '#lib/server/agents/client.ts';
 import { checkStackUpdates, type UpdateEntry } from './checker';
@@ -12,15 +13,15 @@ import { syncUpdateAlert, clearUpdateAlert } from './notify';
 const CHECK_INTERVAL_MS = Number(process.env.UPDATE_CHECK_HOURS ?? 6) * 3_600_000;
 const INITIAL_DELAY_MS = 90_000;
 
-async function runPolicyUpdate(server: typeof servers.$inferSelect, stackName: string) {
-	console.log(`[updates] Auto-Update: ${server.name}/${stackName}`);
+async function runPolicyUpdate(server: typeof servers.$inferSelect, stackName: string, kind: StackKind) {
+	console.log(`[updates] Auto-Update: ${server.name}/${stackName}${kind === 'pod' ? ' (Pod)' : ''}`);
 	const startedAt = new Date();
 	let buffer = '';
 	try {
 		const res = await agentStream(
 			server.baseUrl,
 			decrypt(server.agentTokenEnc),
-			`/v1/stacks/${encodeURIComponent(stackName)}/update`
+			`/v1/${kind === 'pod' ? 'pods' : 'stacks'}/${encodeURIComponent(stackName)}/update`
 		);
 		const reader = res.body!.getReader();
 		const decoder = new TextDecoder();
@@ -33,20 +34,18 @@ async function runPolicyUpdate(server: typeof servers.$inferSelect, stackName: s
 	} catch (e) {
 		buffer += `\nevent-los abgebrochen: ${e}`;
 	}
-	await recordUpdateRun(server.id, stackName, 'policy', buffer, startedAt);
+	await recordUpdateRun(server.id, stackName, 'policy', buffer, startedAt, kind);
 	// Nach dem Lauf frisch prüfen, damit der Feed stimmt
-	const after = await checkStackUpdates(server, stackName).catch(() => null);
+	const after = await checkStackUpdates(server, stackName, kind).catch(() => null);
 	if (after) await syncUpdateAlert(server.id, stackName, after, 'auto', false).catch(() => {});
 }
 
 async function checkAll() {
 	const allServers = await db.select().from(servers);
 	for (const server of allServers) {
-		// Pods aktualisiert Podman selbst (auto-update, Phase 3) — hier nur Compose-Stacks
-		const serverStacks = await db
-			.select()
-			.from(stacks)
-			.where(and(eq(stacks.serverId, server.id), eq(stacks.kind, 'stack')));
+		// Stacks und Pods gleich: Pods prüft der Core gegen die Registry,
+		// ausgeführt wird bei ihnen `podman auto-update` (über den Agent).
+		const serverStacks = await db.select().from(stacks).where(eq(stacks.serverId, server.id));
 		for (const stack of serverStacks) {
 			try {
 				// Gestoppte Stacks werden nicht geprüft. Ein Stack, den jemand bewusst
@@ -59,13 +58,13 @@ async function checkAll() {
 					await clearUpdateAlert(server.id, stack.name);
 					continue;
 				}
-				const entries = await checkStackUpdates(server, stack.name);
+				const entries = await checkStackUpdates(server, stack.name, stack.kind);
 				// Nur echte, anwendbare Updates. Status 'pinned' bleibt bewusst außen vor:
 				// ein Update kann an einem per Digest gepinnten Image nichts ändern, der
 				// Lauf wäre garantiert wirkungslos (und erzeugte trotzdem Historie + Last).
 				const hasUpdate = entries.some((e: UpdateEntry) => e.status === 'update');
 				if (hasUpdate && stack.updatePolicy === 'auto') {
-					await runPolicyUpdate(server, stack.name);
+					await runPolicyUpdate(server, stack.name, stack.kind);
 				} else {
 					// Manuelle Stacks: einmal pro neuer Version aufs Handy melden
 					await syncUpdateAlert(server.id, stack.name, entries, stack.updatePolicy, true);

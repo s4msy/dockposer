@@ -13,6 +13,9 @@ import {
 	fetchPodFiles,
 	fetchPodPs,
 	putPodFile,
+	fetchAutoUpdateTimer,
+	setAutoUpdateTimer,
+	type AutoUpdateTimer,
 	type AgentContainer
 } from '#lib/server/agents/client.ts';
 import { checkStackUpdates } from '#lib/server/updates/checker.ts';
@@ -70,6 +73,10 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		}
 	}
 
+	// Automatische Updates laufen bei Podman über den systemd-Timer des Servers
+	let timer: AutoUpdateTimer | null = null;
+	if (!agentOffline) timer = await fetchAutoUpdateTimer(server.baseUrl, token).catch(() => null);
+
 	let updates: UpdateEntry[] = [];
 	try {
 		updates = pod.updatesJson ? JSON.parse(pod.updatesJson) : [];
@@ -84,7 +91,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		gitTracking: pod.gitTracking,
 		updates,
 		lastUpdateCheck: pod.lastUpdateCheck,
-		updatePolicy: pod.updatePolicy,
+		timer,
 		history: await loadHistory(pod.id),
 		containers,
 		files,
@@ -109,17 +116,17 @@ export const actions: Actions = {
 		}
 	},
 
-	setPolicy: async ({ locals, params, request }) => {
+	setTimer: async ({ locals, params, request }) => {
 		requireUser(locals);
 		const t = translator(locals.locale);
 		const server = await loadServer(params.server);
-		const policy = String((await request.formData()).get('policy') ?? '');
-		if (!['manual', 'auto'].includes(policy)) return fail(400, { checkError: t('stack.invalidPolicy') });
-		await db
-			.update(stacks)
-			.set({ updatePolicy: policy as 'manual' | 'auto' })
-			.where(podWhere(server.id, params.name));
-		return { policySaved: true };
+		const enabled = (await request.formData()).get('enabled') === '1';
+		try {
+			await setAutoUpdateTimer(server.baseUrl, decrypt(server.agentTokenEnc), enabled);
+			return { timerSaved: true };
+		} catch (e) {
+			return fail(502, { checkError: e instanceof AgentError ? e.message : t('stack.unknownError') });
+		}
 	},
 
 	saveFile: async ({ locals, params, request }) => {

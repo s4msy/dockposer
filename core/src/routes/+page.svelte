@@ -55,7 +55,7 @@
 					<a href="/{stack.kind === 'pod' ? 'pods' : 'stacks'}/{server.id}/{encodeURIComponent(stack.name)}" style="display:flex; align-items:center; gap:var(--space-2); padding:var(--space-3) 0; text-decoration:none; color:inherit; min-height:44px;">
 					<span class="dot {stack.state}"></span>
 					{stack.name}
-					{#if stack.kind === 'pod'}<small class="kind-badge">Pod</small>{/if}
+					{#if stack.kind === 'pod'}<small class="kind-badge">Podman</small>{/if}
 					{#if stack.state === 'partial'}
 						<small>{stack.servicesRunning}/{stack.servicesTotal}</small>
 					{:else if stack.state === 'unhealthy'}

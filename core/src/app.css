@@ -274,15 +274,21 @@ label { display: block; margin-bottom: var(--space-1); color: var(--color-text-d
 
 /* ── Breite Bildschirme: Platz nutzen statt Schlauch ──────────────────── */
 /* Server-Karten nebeneinander, sobald genug Platz da ist (auch Handy quer) */
+/* Spalten statt Raster: Karten sind unterschiedlich lang. Im Raster beginnt
+   jede Zeile erst unter der längsten Karte der Zeile davor — eine kurze Karte
+   ließ daneben ein großes Loch. Spalten stapeln lückenlos. */
 .server-grid {
-	display: grid;
-	gap: var(--space-3);
-	grid-template-columns: 1fr;
-	align-items: start;
+	column-gap: var(--space-3);
+}
+.server-grid > .card {
+	break-inside: avoid;
+	margin-bottom: var(--space-3) !important;
 }
 @media (min-width: 720px) {
-	.server-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+	.server-grid { columns: 340px; }
 }
+/* Der Kopf hat schon eine Unterkante — die erste Zeile braucht keine zweite */
+.server-grid ul > li:first-child { border-top: none !important; }
 
 /* Buttons und Eingabefelder füllen ihre Karte — halbbreite Elemente in einer
    breiten Karte wirken wie ein Layoutfehler. Wer schmal will, setzt width:auto. */

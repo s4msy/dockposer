@@ -5,7 +5,7 @@ import { servers, stacks } from '#lib/server/db/schema.ts';
 import { eq } from 'drizzle-orm';
 import type { StackKind } from '#lib/updates.ts';
 import { decrypt } from '#lib/server/crypto.ts';
-import { agentStream } from '#lib/server/agents/client.ts';
+import { agentStream, fetchAutoUpdateTimer, fetchImages } from '#lib/server/agents/client.ts';
 import { checkStackUpdates, type UpdateEntry } from './checker';
 import { recordUpdateRun } from './run';
 import { syncUpdateAlert, clearUpdateAlert } from './notify';
@@ -40,11 +40,50 @@ async function runPolicyUpdate(server: typeof servers.$inferSelect, stackName: s
 	if (after) await syncUpdateAlert(server.id, stackName, after, 'auto', false).catch(() => {});
 }
 
+/**
+ * Hat jemand außerhalb von Dockposer aktualisiert (podman-auto-update.timer,
+ * oder per SSH)? Erkennbar daran, dass der laufende Digest nicht mehr der aus
+ * dem letzten Prüflauf ist. Eigene Läufe prüfen danach sofort neu — für sie
+ * stimmt der Feed schon. Wird als Lauf in die Historie eingetragen und gemeldet.
+ */
+async function recordExternalPodUpdate(server: typeof servers.$inferSelect, stack: typeof stacks.$inferSelect) {
+	let feed: UpdateEntry[] = [];
+	try {
+		feed = stack.updatesJson ? JSON.parse(stack.updatesJson) : [];
+	} catch {
+		return;
+	}
+	if (!feed.length) return;
+	const images = await fetchImages(server.baseUrl, decrypt(server.agentTokenEnc), stack.name, 'pod');
+	const oldD: Record<string, string> = {};
+	const newD: Record<string, string> = {};
+	for (const img of images) {
+		const before = feed.find((e) => e.service === img.service)?.current;
+		const digests = img.digests ?? [];
+		if (!before || !digests.length) continue;
+		if (digests.some((d) => d.endsWith(before))) continue;
+		oldD[img.service] = before;
+		newD[img.service] = digests[0];
+	}
+	if (!Object.keys(newD).length) return;
+	console.log(`[updates] ${server.name}/${stack.name}: von außen aktualisiert (${Object.keys(newD).join(', ')})`);
+	const buffer =
+		'Außerhalb von Dockposer aktualisiert (podman-auto-update.timer oder manuell), erkannt beim Prüflauf.\n\n' +
+		`event: result\ndata: ${JSON.stringify({ result: 'success', old_digests: oldD, new_digests: newD })}\n\n`;
+	await recordUpdateRun(server.id, stack.name, 'policy', buffer, new Date(), 'pod');
+}
+
 async function checkAll() {
 	const allServers = await db.select().from(servers);
 	for (const server of allServers) {
-		// Stacks und Pods gleich: Pods prüft der Core gegen die Registry,
-		// ausgeführt wird bei ihnen `podman auto-update` (über den Agent).
+		// Pods: Automatisch heißt bei Podman der systemd-Timer des Servers — Dockposer
+		// führt dort nichts selbst aus, sondern prüft, meldet und protokolliert.
+		let podTimer = false;
+		if (server.podsEnabled) {
+			podTimer = await fetchAutoUpdateTimer(server.baseUrl, decrypt(server.agentTokenEnc))
+				.then((t) => t.enabled)
+				.catch(() => false);
+		}
 		const serverStacks = await db.select().from(stacks).where(eq(stacks.serverId, server.id));
 		for (const stack of serverStacks) {
 			try {
@@ -56,6 +95,15 @@ async function checkAll() {
 				// Der Check-Knopf in der Detailansicht prüft weiterhin auf Zuruf.
 				if (stack.state === 'stopped') {
 					await clearUpdateAlert(server.id, stack.name);
+					continue;
+				}
+				if (stack.kind === 'pod') {
+					await recordExternalPodUpdate(server, stack).catch((e) =>
+						console.warn(`[updates] Abgleich fehlgeschlagen ${server.name}/${stack.name}:`, e)
+					);
+					const entries = await checkStackUpdates(server, stack.name, 'pod');
+					// Timer an: Er holt das Update selbst — keine „verfügbar"-Meldung
+					await syncUpdateAlert(server.id, stack.name, entries, podTimer ? 'auto' : 'manual', true);
 					continue;
 				}
 				const entries = await checkStackUpdates(server, stack.name, stack.kind);

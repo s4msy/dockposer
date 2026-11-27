@@ -215,6 +215,9 @@
 	// daneben farbig angezeigt und soll nicht doppelt dastehen.
 	const statusText = (s: string) => s.replace(/\s*\((healthy|unhealthy|starting|health: starting)\)/, '');
 
+	const fmtWhen = (iso: string) =>
+		new Date(iso).toLocaleString(page.data.locale ?? 'en', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+
 	// ── Quadlet-Dateien ───────────────────────────────────────────────────
 	// Eine Datei ist ausgewählt; der Editor hält ihren Entwurf. Nach dem
 	// Speichern lädt die Seite neu und der Editor übernimmt den Serverstand —
@@ -291,7 +294,7 @@
 
 <h1>
 	{data.name}
-	<small class="badge">Pod</small>
+	<small class="badge">Podman</small>
 	<small style="color: var(--color-text-dim); font-weight: 400;">{t('stack.onServer', { server: data.server.name })}</small>
 </h1>
 <p style="display: flex; gap: var(--space-3);">
@@ -370,10 +373,30 @@
 	agentOffline={data.agentOffline}
 	busy={!!busy}
 	onRun={() => runAction('update')}
-	policy={data.updatePolicy}
+	policy="manual"
 	checkError={form && 'checkError' in form ? (form.checkError ?? null) : null}
-	policySaved={!!(form && 'policySaved' in form)}
-/>
+>
+	{#snippet automation()}
+		<form method="POST" action="?/setTimer" use:enhance style="margin-top: var(--space-3); display: flex; gap: var(--space-2); align-items: center;">
+			<input type="hidden" name="enabled" value={data.timer?.enabled ? '0' : '1'} />
+			<span style="flex: 1;">
+				{t('pod.autoTimer')}
+				{#if data.timer?.enabled && data.timer.next_run}
+					<small style="display: block; color: var(--color-text-dim);">{t('pod.autoTimerNext', { when: fmtWhen(data.timer.next_run), server: data.server.name })}</small>
+				{:else if data.timer}
+					<small style="display: block; color: var(--color-text-dim);">{t('pod.autoTimerScope', { server: data.server.name })}</small>
+				{/if}
+				{#if data.timer?.last_result && data.timer.last_result !== 'success'}
+					<small style="display: block; color: var(--color-crit);">{t('pod.autoTimerFailed')}</small>
+				{/if}
+			</span>
+			<button
+				disabled={!data.timer}
+				style="width: auto; flex-shrink: 0; white-space: nowrap; min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent; color: {data.timer?.enabled ? 'var(--color-ok)' : 'var(--color-text-dim)'}; border: 1px solid currentColor;"
+			>{data.timer?.enabled ? t('pod.autoOn') : t('pod.autoOff')}</button>
+		</form>
+	{/snippet}
+</UpdatesCard>
 
 <UpdateHistory history={data.history} />
 

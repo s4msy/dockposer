@@ -172,14 +172,15 @@ Nach dem Schreiben lädt der Agent systemd neu (`daemon-reload`). Gestartet wird
 
 ## Pods aktualisieren
 
-Geprüft wird wie bei Stacks: Der Core vergleicht den Digest des laufenden Images mit der Registry (mit den hinterlegten Zugangsdaten, inklusive Release-Infos und Benachrichtigung). Ausgeführt wird mit `podman auto-update`, gefiltert auf die Container dieses Pods:
+**Prüfen** macht der Core wie bei Stacks: Digest des laufenden Images gegen die Registry, mit hinterlegten Zugangsdaten, Release-Infos und Benachrichtigung.
 
-1. Podman zieht das neue Image und startet die Unit neu. Scheitert der Neustart, rollt Podman selbst zurück.
-2. Danach beobachtet Dockposer das Stabilisierungsfenster (90 s). Stürzt ein Container ab oder meldet `unhealthy`, wird das alte Image zurückgetaggt und die Unit neu gestartet.
+**Von Hand** („Update" auf der Pod-Seite) läuft `podman auto-update`, gefiltert auf die Container dieses Pods. Podman zieht das neue Image, startet die Unit neu und rollt selbst zurück, wenn der Neustart scheitert. Danach beobachtet Dockposer 90 s; stürzt etwas ab, wird das alte Image zurückgetaggt und neu gestartet.
 
-Voraussetzung je Container: `AutoUpdate=registry` in der `.container`-Datei (die Vorlagen setzen es) und ein voll qualifizierter Image-Name (`docker.io/…`). Container ohne `AutoUpdate=` erscheinen im Feed mit Hinweis und werden nicht angefasst. Für ein echtes Urteil im Stabilisierungsfenster `HealthCmd=` und `Notify=healthy` setzen — sonst lässt sich nur feststellen, dass nichts abstürzt.
+**Automatisch** heißt bei Podman: `podman-auto-update.timer` (systemd, Standard täglich um Mitternacht). Dockposer hat für Pods deshalb keine eigene Policy, sondern schaltet diesen Timer — er gilt für alle Pods eines Servers. Was der Timer aktualisiert hat, erkennt Dockposer beim nächsten Prüflauf und trägt es als „automatisch" in die Historie ein (mit Push). Ist der Timer an, entfällt die Meldung „Update verfügbar".
 
-Private Registries: als Agent-User `podman login --authfile ~/.config/containers/auth.json <registry>` — der Standardort unter `$XDG_RUNTIME_DIR` überlebt keinen Neustart, `~/.config/containers/auth.json` liest Podman ebenfalls. Wer Policy „automatisch" in Dockposer nutzt, sollte `podman-auto-update.timer` **nicht** zusätzlich aktivieren — sonst aktualisieren zwei Stellen unabhängig voneinander.
+Voraussetzung je Container: `AutoUpdate=registry` und ein voll qualifizierter Image-Name (`docker.io/…`). Container ohne `AutoUpdate=` fasst Podman nie an — weder von Hand noch per Timer; der Feed zeigt dann „AutoUpdate=registry fehlt". Für ein echtes Urteil `HealthCmd=` und `Notify=healthy` setzen — dann wartet systemd auf den Healthcheck, und Podmans Rollback greift auch beim Timer.
+
+Private Registries: als Agent-User `podman login --authfile ~/.config/containers/auth.json <registry>` — der Standardort unter `$XDG_RUNTIME_DIR` überlebt keinen Neustart, `~/.config/containers/auth.json` liest Podman ebenfalls.
 
 ---
 

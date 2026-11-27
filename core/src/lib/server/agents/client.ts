@@ -379,3 +379,26 @@ export const deletePod = (baseUrl: string, token: string, pod: string, git?: { m
 		{ method: 'DELETE' },
 		POD_EDIT_TIMEOUT
 	);
+
+// ── podman-auto-update.timer (serverweit) ──────────────────────────────────
+
+export interface AutoUpdateTimer {
+	enabled: boolean;
+	active: boolean;
+	next_run?: string;
+	last_run?: string;
+	/** systemd-Result des letzten Laufs: success, exit-code, … */
+	last_result?: string;
+}
+
+export const fetchAutoUpdateTimer = (baseUrl: string, token: string) =>
+	agentFetch<AutoUpdateTimer>(baseUrl, token, '/v1/pods-autoupdate', {}, 15_000);
+
+export const setAutoUpdateTimer = (baseUrl: string, token: string, enabled: boolean) =>
+	agentFetch<AutoUpdateTimer>(
+		baseUrl,
+		token,
+		'/v1/pods-autoupdate',
+		{ method: 'POST', body: JSON.stringify({ enabled }), headers: { 'Content-Type': 'application/json' } },
+		30_000
+	);

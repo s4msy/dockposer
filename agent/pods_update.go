@@ -356,3 +356,103 @@ func podRollback(ctx context.Context, def podDef, updated map[string]bool, oldID
 	emit("✓ Rollback aktiv — Pod läuft wieder auf altem Stand.")
 	result("rolled_back", map[string]any{"reason": reason, "old_digests": oldDigests})
 }
+
+// ── Automatische Updates: podman-auto-update.timer ─────────────────────────
+//
+// Bei Podman ist „automatisch" kein Dockposer-Zeitplan, sondern Podmans eigener
+// systemd-Timer: Er ruft (Standard: täglich um Mitternacht) `podman auto-update`
+// für alle Container mit AutoUpdate= auf — serverweit, nicht pro Pod. Dockposer
+// zeigt ihn an und schaltet ihn; was er aktualisiert hat, erkennt der Core beim
+// nächsten Prüflauf und trägt es in die Historie ein.
+
+const autoUpdateTimer = "podman-auto-update.timer"
+
+type timerState struct {
+	Enabled    bool   `json:"enabled"`
+	Active     bool   `json:"active"`
+	NextRun    string `json:"next_run,omitempty"`    // RFC3339
+	LastRun    string `json:"last_run,omitempty"`    // RFC3339
+	LastResult string `json:"last_result,omitempty"` // success, exit-code, …
+}
+
+func systemdShow(ctx context.Context, unit string, props ...string) map[string]string {
+	args := []string{"--user", "show", unit, "--timestamp=unix"}
+	for _, p := range props {
+		args = append(args, "-p", p)
+	}
+	out, _ := run(ctx, "", 10*time.Second, "systemctl", args...)
+	res := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		if k, v, ok := strings.Cut(strings.TrimSpace(line), "="); ok {
+			res[k] = v
+		}
+	}
+	return res
+}
+
+// "@1795830000" → RFC3339; leer/0 → "". Ältere systemd ignorieren
+// --timestamp=unix bei `show` und schreiben "Sat 2026-11-28 00:00:00 CET".
+func unixStamp(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" || v == "0" || v == "n/a" {
+		return ""
+	}
+	if n, err := strconv.ParseInt(strings.TrimPrefix(v, "@"), 10, 64); err == nil {
+		if n <= 0 {
+			return ""
+		}
+		return time.Unix(n, 0).UTC().Format(time.RFC3339)
+	}
+	if t, err := time.ParseInLocation("Mon 2006-01-02 15:04:05 MST", v, time.Local); err == nil {
+		return t.UTC().Format(time.RFC3339)
+	}
+	return ""
+}
+
+func readTimerState(ctx context.Context) timerState {
+	t := systemdShow(ctx, autoUpdateTimer, "UnitFileState", "ActiveState", "NextElapseUSecRealtime", "LastTriggerUSec")
+	s := systemdShow(ctx, "podman-auto-update.service", "Result")
+	st := timerState{
+		Enabled: t["UnitFileState"] == "enabled",
+		Active:  t["ActiveState"] == "active",
+		NextRun: unixStamp(t["NextElapseUSecRealtime"]),
+		LastRun: unixStamp(t["LastTriggerUSec"]),
+	}
+	if st.LastRun != "" {
+		st.LastResult = s["Result"]
+	}
+	return st
+}
+
+// GET /v1/pods-autoupdate
+func handleAutoUpdateTimer(w http.ResponseWriter, r *http.Request) {
+	if !podsEnabled {
+		httpErr(w, 404, "Pods sind auf diesem Server nicht aktiv")
+		return
+	}
+	writeJSON(w, readTimerState(r.Context()))
+}
+
+// POST /v1/pods-autoupdate {"enabled": true|false}
+func handleAutoUpdateTimerSet(w http.ResponseWriter, r *http.Request) {
+	if !podsEnabled {
+		httpErr(w, 404, "Pods sind auf diesem Server nicht aktiv")
+		return
+	}
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpErr(w, 400, "ungültiger Body")
+		return
+	}
+	verb := "disable"
+	if req.Enabled {
+		verb = "enable"
+	}
+	if out, err := run(r.Context(), "", 30*time.Second, "systemctl", "--user", verb, "--now", autoUpdateTimer); err != nil {
+		httpErr(w, 500, "systemctl --user "+verb+" fehlgeschlagen: "+firstLine(out))
+		return
+	}
+	writeJSON(w, readTimerState(r.Context()))
+}

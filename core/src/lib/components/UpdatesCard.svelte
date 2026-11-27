@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { translator } from '#lib/i18n/index.ts';
 	import type { UpdateEntry } from '#lib/updates.ts';
+	import type { Snippet } from 'svelte';
 
 	let {
 		kind = 'stack',
@@ -16,7 +17,8 @@
 		onRun,
 		policy,
 		checkError = null,
-		policySaved = false
+		policySaved = false,
+		automation
 	}: {
 		kind?: 'stack' | 'pod';
 		updates: UpdateEntry[];
@@ -29,6 +31,8 @@
 		policy: string;
 		checkError?: string | null;
 		policySaved?: boolean;
+		/** Ersetzt die Policy-Auswahl — bei Pods steuert Podmans Timer das Automatische */
+		automation?: Snippet;
 	} = $props();
 	const t = $derived(translator(page.data.locale ?? 'en'));
 </script>
@@ -116,6 +120,9 @@
 		<button disabled={!!busy || agentOffline} onclick={onRun}>{t('stack.runUpdate')}</button>
 	</div>
 
+	{#if automation}
+		{@render automation()}
+	{:else}
 	<form method="POST" action="?/setPolicy" use:enhance style="margin-top: var(--space-3); display: flex; gap: var(--space-2); align-items: center;">
 		<label for="policy" style="margin: 0; flex: 1;">{t('stack.updatePolicy')}</label>
 		<select id="policy" name="policy" value={policy} style="font: inherit; padding: var(--space-2); border-radius: var(--radius); border: 1px solid var(--color-border); background: var(--color-bg); color: var(--color-text);">
@@ -125,5 +132,6 @@
 		<button style="width: auto;">OK</button>
 	</form>
 	{#if policySaved}<small role="status" style="color: var(--color-ok);">{t('stack.policySaved')}</small>{/if}
+	{/if}
 </div>
 

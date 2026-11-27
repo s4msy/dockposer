@@ -364,7 +364,9 @@
 	updates={data.updates}
 	lastUpdateCheck={data.lastUpdateCheck}
 	stopped={podStopped}
-	healthHint={containers.some((c) => c.State === 'running' && !c.Health) ? t('pod.noHealthchecks') : null}
+	healthHint={containers.some((c) => c.State === 'running' && !c.Health)
+		? t('stack.noHealthchecksSome', { services: containers.filter((c) => c.State === 'running' && !c.Health).map((c) => c.Service).join(', ') })
+		: null}
 	agentOffline={data.agentOffline}
 	busy={!!busy}
 	onRun={() => runAction('update')}
@@ -386,10 +388,7 @@
 			<button style="width: auto; flex-shrink: 0; white-space: nowrap; min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent; color: {data.gitTracking ? 'var(--color-ok)' : 'var(--color-text-dim)'}; border: 1px solid currentColor;">
 				{data.gitTracking ? t('stack.gitOn') : t('stack.gitOff')}
 			</button>
-			<small style="color: var(--color-text-dim);">
-				{t('pod.gitHint')}
-				<a href="/settings/git">{t('stack.gitSetUp')}</a>
-			</small>
+			<a href="/settings/git" style="font-size: 0.85rem;">{t('stack.gitSetUp')}</a>
 		</form>
 
 		<div style="display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-2) 0 var(--space-3);">
@@ -421,7 +420,6 @@
 					onclick={addFile}
 				>{t('common.add')}</button>
 			</div>
-			<small style="color: var(--color-text-dim); display: block; margin-top: calc(-1 * var(--space-2)); margin-bottom: var(--space-3);">{t('pod.addFileHint')}</small>
 		{/if}
 
 		{#if form && 'saveError' in form && form.saveError && form.fileName === selected}
@@ -461,7 +459,7 @@
 					<input type="hidden" name="fileName" value={selected} />
 					<CodeEditor name="content" bind:value={editorContent} fileName={selected} rows={14} />
 					<div style="display: flex; gap: var(--space-2); margin-top: var(--space-2);">
-						<button disabled={data.agentOffline} style="flex: 1;">{isNew ? t('pod.createFile') : t('common.save')}</button>
+						<button disabled={data.agentOffline} style="flex: 1;">{isNew ? t('pod.createFile') : t('pod.checkAndSave')}</button>
 					</div>
 				</form>
 				{#if !isNew}
@@ -485,7 +483,6 @@
 				{/if}
 			{/if}
 		{/if}
-		<small style="color: var(--color-text-dim); display: block; margin-top: var(--space-3);">{t('pod.editHint', { version: data.server.podmanVersion ?? '' })}</small>
 	{/if}
 </div>
 

@@ -459,10 +459,7 @@
 			<button style="width: auto; flex-shrink: 0; white-space: nowrap; min-height: 36px; padding: var(--space-1) var(--space-3); background: transparent; color: {data.gitTracking ? 'var(--color-ok)' : 'var(--color-text-dim)'}; border: 1px solid currentColor;">
 				{data.gitTracking ? t('stack.gitOn') : t('stack.gitOff')}
 			</button>
-			<small style="color: var(--color-text-dim);">
-				{t('stack.gitHint', { link: '' })}
-				<a href="/settings/git">{t('stack.gitSetUp')}</a>
-			</small>
+			<a href="/settings/git" style="font-size: 0.85rem;">{t('stack.gitSetUp')}</a>
 		</form>
 
 		{#if form?.saveError}<div class="alert-error" role="alert" style="margin-top: var(--space-2); white-space: pre-wrap; overflow-wrap: anywhere;">{form.saveError}</div>{/if}

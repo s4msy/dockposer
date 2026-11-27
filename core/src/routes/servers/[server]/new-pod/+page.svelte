@@ -17,7 +17,6 @@
 
 	const podText = (x: string) => `[Pod]
 PodName=${x}
-# Ports gelten für den ganzen Pod:
 PublishPort=127.0.0.1:8080:80
 
 [Install]
@@ -98,7 +97,6 @@ WantedBy=default.target
 			/>
 		</div>
 	{/each}
-	<small style="color: var(--color-text-dim); display: block; margin-bottom: var(--space-3);">{t('newpod.hint', { version: data.server.podmanVersion ?? '' })}</small>
 
 	{#if data.gitReady}
 		<label style="display: flex; gap: var(--space-2); align-items: center; font-weight: 400;">

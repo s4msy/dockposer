@@ -431,9 +431,6 @@
 					{#if 'fileDeleted' in form}{t('pod.fileDeleted', { file: form.fileDeleted ?? '' })}{:else}{t('pod.fileSaved', { file: form.fileName ?? '', committed: 'committed' in form && form.committed ? t('stack.andCommitted') : '' })}{/if}
 					{#if form.restartNeeded}{t('pod.restartToApply')}{/if}
 				</p>
-				{#if form.restartNeeded}
-					<button style="width: auto; margin-top: var(--space-1);" disabled={!!busy} onclick={() => runAction('restart')}>restart</button>
-				{/if}
 				{#if 'reloadError' in form && form.reloadError}<p style="color: var(--color-warn); margin: var(--space-1) 0 0;">{form.reloadError}</p>{/if}
 				{#if form.gitError}<p style="color: var(--color-warn); margin: var(--space-1) 0 0;">{t('stack.gitNote', { msg: form.gitError })}</p>{/if}
 				{#if form.warnings && form.warnings.length > 0}
